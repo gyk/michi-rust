@@ -39,32 +39,6 @@ fn setpos_alt(moves: &[&str]) -> Position {
     setup_position(moves)
 }
 
-/// Set up stones on the board by specifying Black and White moves separately.
-/// This is more intuitive for tests where you want to place specific patterns.
-/// The moves are interleaved: Black[0], White[0], Black[1], White[1], ...
-///
-/// Example: setpos(&["C8", "E9", "F9"], &["C9", "B8", "D8"]) places:
-/// - Black at C8, E9, F9
-/// - White at C9, B8, D8
-#[allow(dead_code)]
-fn setpos(black_moves: &[&str], white_moves: &[&str]) -> Position {
-    let mut moves = Vec::new();
-    let max_len = black_moves.len().max(white_moves.len());
-    for i in 0..max_len {
-        if i < black_moves.len() {
-            moves.push(black_moves[i]);
-        } else {
-            moves.push("pass");
-        }
-        if i < white_moves.len() {
-            moves.push(white_moves[i]);
-        } else {
-            moves.push("pass");
-        }
-    }
-    setup_position(&moves)
-}
-
 // =============================================================================
 // Coordinate parsing and string conversion tests
 // =============================================================================
