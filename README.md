@@ -1,5 +1,10 @@
 # michi-rust
 
+<div align="center">
+  <img src="./assets/logo.svg" alt="michi-rust" />
+</div>
+<br/>
+
 A Rust reimplementation of [Michi](https://github.com/pasky/michi) — a Minimalistic Go MCTS Engine.
 
 This project is based on [Michi-c](https://github.com/db3108/michi-c), which itself is a C port of the original Python code by Petr Baudis.
@@ -75,21 +80,21 @@ cargo run --release -- demo
 
 #### Strength Levels
 
-| Level       | Simulations | Description                |
-|-------------|-------------|----------------------------|
-| `weak`      | 10          | Very weak (for testing)    |
-| `medium`    | 500         | Medium strength            |
-| `strong`    | 1400        | Strong (default)           |
-| `very-strong` | 5000      | Very strong                |
-| `max`       | 20000       | Maximum (slow but strongest) |
+| Level         | Simulations | Description                     |
+|---------------|-------------|---------------------------------|
+| `weak`        | 10          | Very weak (for testing)         |
+| `medium`      | 500         | Medium strength                 |
+| `strong`      | 1400        | Strong (default)                |
+| `very-strong` | 5000        | Very strong                     |
+| `max`         | 20000       | Maximum (slow but strongest)    |
 
 ## Board Size Configuration
 
 The board size is set at compile time using Cargo features:
 
-| Feature      | Board Size | Command                                              |
-|--------------|------------|------------------------------------------------------|
-| `board9x9`   | 9×9        | `cargo build` (default)                              |
+| Feature      | Board Size | Command                                                   |
+|--------------|------------|-----------------------------------------------------------|
+| `board9x9`   | 9×9        | `cargo build` (default)                                   |
 | `board13x13` | 13×13      | `cargo build --no-default-features --features board13x13` |
 
 > **Note:** Only one board size can be enabled at a time.
