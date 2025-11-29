@@ -144,7 +144,10 @@ fn test_play_single_stone() {
     assert_eq!(pos.n, 1, "Move count should be 1");
     assert_eq!(pos.last, pt, "Last move should be D4");
     // After Black plays, colors swap, so Black's stone is now 'x'
-    assert_eq!(pos.color[pt], b'x', "Stone should be placed (as lowercase after swap)");
+    assert_eq!(
+        pos.color[pt], b'x',
+        "Stone should be placed (as lowercase after swap)"
+    );
 }
 
 #[test]
@@ -291,7 +294,11 @@ fn test_suicide_single_stone() {
 
     // Now it's White's turn, A1 would be suicide
     let result = play_move(&mut pos, parse_coord("A1"));
-    assert!(result.contains("suicide"), "A1 should be suicide: {}", result);
+    assert!(
+        result.contains("suicide"),
+        "A1 should be suicide: {}",
+        result
+    );
 }
 
 #[test]
@@ -462,7 +469,10 @@ fn test_tree_expand() {
 
     assert!(node.children.is_empty());
     expand(&mut node);
-    assert!(!node.children.is_empty(), "Expanded node should have children");
+    assert!(
+        !node.children.is_empty(),
+        "Expanded node should have children"
+    );
 
     // On an empty 13x13 board, there should be many legal moves
     assert!(
@@ -595,7 +605,7 @@ fn test_score_empty_board() {
 
 #[test]
 fn test_board_size() {
-    use michi_rust::constants::{N, BOARDSIZE};
+    use michi_rust::constants::{BOARDSIZE, N};
 
     assert_eq!(N, 13, "Board size should be 13x13");
     assert!(BOARDSIZE > N * N, "BOARDSIZE includes padding");
@@ -637,7 +647,8 @@ fn test_neighbors_center() {
     let pos = Position::new();
     for n in neighbors {
         assert_eq!(
-            pos.color[n], b'.',
+            pos.color[n],
+            b'.',
             "Neighbor {} should be empty",
             str_coord(n)
         );

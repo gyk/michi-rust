@@ -1,15 +1,39 @@
-use crate::constants::{BOARD_IMAX, BOARD_IMIN, EXPAND_VISITS, PASS_MOVE, PRIOR_EVEN, RAVE_EQUIV};
+//! Monte Carlo Tree Search (MCTS) implementation with RAVE.
+//!
+//! This module implements MCTS with:
+//! - UCB1-RAVE for node selection (combining UCB with All-Moves-As-First heuristic)
+//! - Progressive widening for tree expansion
+//! - Simple random playouts for value estimation
+//!
+//! The search maintains a tree where each node represents a game position.
+//! The tree is expanded incrementally, and leaf nodes are evaluated using playouts.
+
+use crate::constants::{
+    BOARD_IMAX, BOARD_IMIN, BOARDSIZE, EXPAND_VISITS, PASS_MOVE, PRIOR_EVEN, RAVE_EQUIV,
+};
 use crate::playout::mcplayout;
 use crate::position::{Position, is_eye, pass_move, play_move, str_coord};
 
+/// A node in the MCTS search tree.
+///
+/// Each node stores statistics for both regular visits (v, w) and AMAF visits (av, aw),
+/// as well as prior values (pv, pw) for initialization.
 pub struct TreeNode {
+    /// The game position at this node
     pub pos: Position,
-    pub v: u32,  // number of visits
-    pub w: u32,  // number of wins (expected reward is w/v)
-    pub pv: u32, // prior visits
-    pub pw: u32, // prior wins (node value = w/v + pw/pv)
-    pub av: u32, // AMAF visits
-    pub aw: u32, // AMAF wins
+    /// Number of visits
+    pub v: u32,
+    /// Number of wins (winrate = w/v)
+    pub w: u32,
+    /// Prior visits (for initialization)
+    pub pv: u32,
+    /// Prior wins
+    pub pw: u32,
+    /// AMAF (All Moves As First) visits
+    pub av: u32,
+    /// AMAF wins
+    pub aw: u32,
+    /// Child nodes (one per legal move)
     pub children: Vec<TreeNode>,
 }
 
@@ -20,8 +44,9 @@ impl Default for TreeNode {
 }
 
 impl TreeNode {
+    /// Create a new tree node for the given position.
     pub fn new(pos: &Position) -> Self {
-        TreeNode {
+        Self {
             pos: pos.clone(),
             v: 0,
             w: 0,
@@ -32,12 +57,22 @@ impl TreeNode {
             children: Vec::new(),
         }
     }
+
+    /// Calculate the winrate for this node.
+    #[inline]
+    pub fn winrate(&self) -> f64 {
+        if self.v > 0 {
+            self.w as f64 / self.v as f64
+        } else {
+            -0.1 // Indicate unvisited
+        }
+    }
 }
 
-pub fn new_tree_node(pos: &Position) -> TreeNode {
-    TreeNode::new(pos)
-}
-
+/// Expand a node by generating all legal child moves.
+///
+/// Each legal move becomes a child node. If no moves are available,
+/// a pass move is added.
 pub fn expand(node: &mut TreeNode) {
     if !node.children.is_empty() {
         return;
@@ -48,27 +83,30 @@ pub fn expand(node: &mut TreeNode) {
         if node.pos.color[pt] != b'.' {
             continue;
         }
-        // Skip true eyes for current player
+        // Skip true eyes for current player (never a good move)
         if is_eye(&node.pos, pt) == b'X' {
             continue;
         }
 
-        let mut p = node.pos.clone();
-        let ret = play_move(&mut p, pt);
-        if ret.is_empty() {
-            node.children.push(TreeNode::new(&p));
+        let mut child_pos = node.pos.clone();
+        if play_move(&mut child_pos, pt).is_empty() {
+            node.children.push(TreeNode::new(&child_pos));
         }
     }
 
-    // If no moves available, add pass
+    // Always allow passing if no other moves
     if node.children.is_empty() {
-        let mut p = node.pos.clone();
-        pass_move(&mut p);
-        node.children.push(TreeNode::new(&p));
+        let mut child_pos = node.pos.clone();
+        pass_move(&mut child_pos);
+        node.children.push(TreeNode::new(&child_pos));
     }
 }
 
-/// Compute RAVE urgency for node selection
+/// Compute the RAVE-UCB urgency score for node selection.
+///
+/// Combines the node's empirical winrate with AMAF (All Moves As First) statistics.
+/// The balance between empirical and AMAF is controlled by the beta parameter,
+/// which decreases as the node gets more visits.
 fn rave_urgency(node: &TreeNode) -> f64 {
     let v = (node.v + node.pv) as f64;
     let expectation = (node.w + node.pw) as f64 / v;
@@ -82,23 +120,24 @@ fn rave_urgency(node: &TreeNode) -> f64 {
     beta * rave_expectation + (1.0 - beta) * expectation
 }
 
-/// Select the most urgent child using RAVE/UCB policy
-fn most_urgent(children: &mut [TreeNode]) -> usize {
-    let mut best_idx = 0;
-    let mut best_urgency = f64::NEG_INFINITY;
-
-    for (i, child) in children.iter().enumerate() {
-        let urgency = rave_urgency(child);
-        if urgency > best_urgency {
-            best_urgency = urgency;
-            best_idx = i;
-        }
-    }
-
-    best_idx
+/// Select the child with the highest urgency score.
+fn most_urgent(children: &[TreeNode]) -> usize {
+    children
+        .iter()
+        .enumerate()
+        .max_by(|(_, a), (_, b)| {
+            rave_urgency(a)
+                .partial_cmp(&rave_urgency(b))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .map(|(i, _)| i)
+        .unwrap_or(0)
 }
 
-/// Descend through the tree to a leaf, returning the path of indices
+/// Descend through the tree to a leaf node, recording the path taken.
+///
+/// Returns the path of child indices from root to leaf.
+/// Updates the AMAF map with moves played during descent.
 fn tree_descend(tree: &mut TreeNode, amaf_map: &mut [i8]) -> Vec<usize> {
     let mut path = Vec::new();
     let mut node = tree;
@@ -109,7 +148,7 @@ fn tree_descend(tree: &mut TreeNode, amaf_map: &mut [i8]) -> Vec<usize> {
             break;
         }
 
-        let child_idx = most_urgent(&mut node.children);
+        let child_idx = most_urgent(&node.children);
         path.push(child_idx);
 
         let child = &node.children[child_idx];
@@ -140,7 +179,10 @@ fn tree_descend(tree: &mut TreeNode, amaf_map: &mut [i8]) -> Vec<usize> {
     path
 }
 
-/// Update tree statistics after a playout
+/// Update tree statistics after a playout.
+///
+/// Propagates the playout result back up the tree, updating visit and win counts.
+/// Also updates AMAF statistics for sibling moves that appeared in the playout.
 fn tree_update(tree: &mut TreeNode, path: &[usize], amaf_map: &[i8], mut score: f64) {
     // Update root
     tree.v += 1;
@@ -185,18 +227,19 @@ fn tree_update(tree: &mut TreeNode, path: &[usize], amaf_map: &[i8], mut score: 
     }
 }
 
-/// Get the leaf position from the tree following the given path
+/// Get the position at the leaf node reached by following the given path.
 fn get_leaf_position(tree: &TreeNode, path: &[usize]) -> Position {
-    let mut node = tree;
-    for &idx in path {
-        node = &node.children[idx];
-    }
-    node.pos.clone()
+    path.iter()
+        .fold(tree, |node, &idx| &node.children[idx])
+        .pos
+        .clone()
 }
 
+/// Run MCTS search from the given root position.
+///
+/// Performs the specified number of simulations and returns the best move found.
+/// The best move is the most-visited child of the root.
 pub fn tree_search(root: &mut TreeNode, sims: usize) -> usize {
-    use crate::constants::BOARDSIZE;
-
     // Initialize root if necessary
     if root.children.is_empty() {
         expand(root);
@@ -220,41 +263,32 @@ pub fn tree_search(root: &mut TreeNode, sims: usize) -> usize {
     best_move(root)
 }
 
-/// Find the most visited child (best move)
+/// Find the best move (most visited child).
 fn best_move(tree: &TreeNode) -> usize {
-    if tree.children.is_empty() {
-        return PASS_MOVE;
-    }
-
-    let mut best_idx = 0;
-    let mut best_visits = 0;
-
-    for (i, child) in tree.children.iter().enumerate() {
-        if child.v > best_visits {
-            best_visits = child.v;
-            best_idx = i;
-        }
-    }
-
-    tree.children[best_idx].pos.last
+    tree.children
+        .iter()
+        .max_by_key(|c| c.v)
+        .map(|c| c.pos.last)
+        .unwrap_or(PASS_MOVE)
 }
 
+/// Calculate the winrate for a node.
+///
+/// Returns -0.1 for unvisited nodes to indicate they haven't been explored.
+#[deprecated(note = "Use TreeNode::winrate() method instead")]
 pub fn winrate(node: &TreeNode) -> f64 {
-    if node.v > 0 {
-        node.w as f64 / node.v as f64
-    } else {
-        -0.1
-    }
+    node.winrate()
 }
 
+/// Print debug information about the root's children.
 pub fn dump_children(root: &TreeNode) {
-    for c in &root.children {
+    for child in &root.children {
         eprintln!(
             "move {} v={} w={} wr={:.3}",
-            str_coord(c.pos.last),
-            c.v,
-            c.w,
-            winrate(c)
+            str_coord(child.pos.last),
+            child.v,
+            child.w,
+            child.winrate()
         );
     }
 }

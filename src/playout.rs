@@ -1,66 +1,87 @@
-use crate::constants::{BOARD_IMAX, BOARD_IMIN, MAX_GAME_LEN};
-use crate::position::{Position, is_eye, pass_move, play_move};
+//! Monte Carlo playouts (random game simulation).
+//!
+//! This module implements random playouts for evaluating positions.
+//! A playout plays random legal moves until the game ends, then scores the result.
+//!
+//! TODO: Add heuristics from the C implementation:
+//! - Capture moves prioritization
+//! - 3x3 pattern matching
+//! - Self-atari rejection
+
+use crate::constants::{BOARD_IMAX, BOARD_IMIN, EMPTY, MAX_GAME_LEN};
+use crate::position::{Position, is_eye, is_eyeish, pass_move, play_move};
 
 /// Perform a Monte Carlo playout from the given position.
-/// Returns a score from the perspective of the player to move at the start.
+///
+/// Plays random legal moves until two consecutive passes or the game length limit.
+/// Returns a score from the perspective of the player to move at the start:
+/// - Positive score = starting player wins
+/// - Negative score = starting player loses
 pub fn mcplayout(pos: &mut Position) -> f64 {
     let start_n = pos.n;
     let mut passes = 0;
 
     while passes < 2 && pos.n < MAX_GAME_LEN {
-        let mut played = false;
-
-        // Try to find a legal move (simple random policy for now)
-        // In the real implementation, this should use heuristics like the C code
-        for pt in BOARD_IMIN..BOARD_IMAX {
-            if pos.color[pt] != b'.' {
-                continue; // Not empty
-            }
-            // Skip true eyes for current player
-            if is_eye(pos, pt) == b'X' {
-                continue;
-            }
-            let ret = play_move(pos, pt);
-            if ret.is_empty() {
-                played = true;
-                break;
-            }
-        }
-
-        if !played {
+        if let Some(pt) = find_random_move(pos) {
+            play_move(pos, pt);
+            passes = 0;
+        } else {
             pass_move(pos);
             passes += 1;
-        } else {
-            passes = 0;
         }
     }
 
-    // Compute score
+    // Compute score and adjust for perspective
     let s = score(pos);
-    // Adjust for whose perspective we're scoring from
     if start_n % 2 != pos.n % 2 { -s } else { s }
 }
 
-/// Compute score for to-play player
-/// This assumes a final position with all dead stones captured
-/// and only single point eyes on the board
-fn score(pos: &Position) -> f64 {
-    use crate::position::is_eyeish;
+/// Find a random legal move that is not a true eye.
+///
+/// This is a simple random policy. The C implementation uses more sophisticated
+/// heuristics (captures, patterns, locality).
+fn find_random_move(pos: &mut Position) -> Option<usize> {
+    // TODO: Use heuristics like the C code (capture, pat3, locality)
+    for pt in BOARD_IMIN..BOARD_IMAX {
+        if pos.color[pt] != EMPTY {
+            continue;
+        }
+        // Skip true eyes for current player
+        if is_eye(pos, pt) == b'X' {
+            continue;
+        }
+        if play_move(pos, pt).is_empty() {
+            return Some(pt);
+        }
+    }
+    None
+}
 
+/// Compute the score for the current player.
+///
+/// Uses area scoring (Chinese rules):
+/// - Stones on the board count as territory
+/// - Eyeish empty points belong to the surrounding color
+/// - Komi is applied (negative for Black, positive for White)
+///
+/// Returns a positive score if the current player ('X') is winning.
+fn score(pos: &Position) -> f64 {
+    // Start with komi adjustment
     let mut s = if pos.n % 2 == 0 {
-        -pos.komi as f64 // komi counts negatively for BLACK
+        -pos.komi as f64 // Black to play, komi counts against Black
     } else {
-        pos.komi as f64
+        pos.komi as f64 // White to play, komi counts for White
     };
 
     for pt in BOARD_IMIN..BOARD_IMAX {
         let c = pos.color[pt];
-        let effective = if c == b'.' { is_eyeish(pos, pt) } else { c };
+        // For empty points, check if they're controlled by one side
+        let effective = if c == EMPTY { is_eyeish(pos, pt) } else { c };
 
-        if effective == b'X' {
-            s += 1.0;
-        } else if effective == b'x' {
-            s -= 1.0;
+        match effective {
+            b'X' => s += 1.0,
+            b'x' => s -= 1.0,
+            _ => {} // Empty or neutral
         }
     }
 
