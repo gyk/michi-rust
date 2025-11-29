@@ -17,8 +17,8 @@ use crate::constants::{
 use crate::patterns::{large_pattern_probability, pat3_match};
 use crate::playout::mcplayout;
 use crate::position::{
-    Point, Position, all_neighbors, fix_atari_ext, gen_capture_moves_all, is_eye, pass_move,
-    play_move, str_coord,
+    Point, Position, all_neighbors, fix_atari_ext, gen_capture_moves_all, is_eye, is_eyeish,
+    pass_move, play_move, str_coord,
 };
 
 /// A node in the MCTS search tree.
@@ -692,6 +692,20 @@ fn mcplayout_with_owner(
                 owner_map[pt] += 1;
             } else {
                 owner_map[pt] -= 1;
+            }
+        } else if c == EMPTY {
+            let owner = is_eyeish(pos, pt);
+            if owner == b'X' || owner == b'x' {
+                let is_black = if pos.n % 2 == 0 {
+                    owner == b'X'
+                } else {
+                    owner == b'x'
+                };
+                if is_black {
+                    owner_map[pt] += 1;
+                } else {
+                    owner_map[pt] -= 1;
+                }
             }
         }
     }
