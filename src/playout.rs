@@ -18,38 +18,22 @@ use crate::position::{
     all_neighbors, fix_atari, is_eye, is_eyeish, pass_move, play_move, Point, Position,
 };
 
-/// Simple fast random number generator (32-bit Linear Congruential Generator).
-/// Same algorithm as michi-c for reproducibility.
-static mut RNG_STATE: u32 = 1;
-
 /// Seed the random number generator.
 #[allow(dead_code)]
-pub fn seed_rng(seed: u32) {
-    unsafe {
-        RNG_STATE = if seed == 0 { 1 } else { seed };
-    }
-}
-
-/// Generate a random u32.
-#[inline]
-fn qdrandom() -> u32 {
-    unsafe {
-        RNG_STATE = RNG_STATE.wrapping_mul(1664525).wrapping_add(1013904223);
-        RNG_STATE
-    }
+pub fn seed_rng(seed: u64) {
+    fastrand::seed(seed);
 }
 
 /// Generate a random integer in [0, n).
 #[inline]
 pub fn random_int(n: u32) -> u32 {
-    let r = qdrandom() as u64;
-    ((r * n as u64) >> 32) as u32
+    fastrand::u32(0..n)
 }
 
 /// Generate a random float in [0, 1).
 #[inline]
 fn random_float() -> f64 {
-    (qdrandom() as f64) / (u32::MAX as f64)
+    fastrand::f64()
 }
 
 /// Perform a Monte Carlo playout from the given position.

@@ -380,17 +380,21 @@ impl LargePatternDb {
 
     /// Initialize Zobrist hash random data.
     fn init_zobrist_hashdata(&mut self) {
-        // Use a simple PRNG matching the C code
-        let mut idum: u32 = 1;
-        let mut qdrandom = || {
-            idum = idum.wrapping_mul(1664525).wrapping_add(1013904223);
-            idum
-        };
+        // Use a simple LCG PRNG matching the C code for deterministic initialization.
+        // This must match michi-c exactly for hash compatibility.
+        struct Lcg(u32);
+        impl Lcg {
+            fn next(&mut self) -> u32 {
+                self.0 = self.0.wrapping_mul(1664525).wrapping_add(1013904223);
+                self.0
+            }
+        }
+        let mut rng = Lcg(1);
 
         for d in 0..MAX_PATTERN_DIST {
             for c in 0..4 {
-                let d1 = qdrandom() as u64;
-                let d2 = qdrandom() as u64;
+                let d1 = rng.next() as u64;
+                let d2 = rng.next() as u64;
                 self.zobrist_hashdata[d][c] = (d1 << 32) | d2;
             }
         }

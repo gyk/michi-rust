@@ -10,3 +10,4 @@ board13x13 = []
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
+fastrand = "2"
