@@ -414,7 +414,7 @@ pub fn tree_search(root: &mut TreeNode, sims: usize) -> usize {
 
         // Get position at the leaf and run a playout
         let mut pos = get_leaf_position(root, &path);
-        let score = mcplayout(&mut pos);
+        let score = mcplayout(&mut pos, Some(&mut amaf_map));
 
         // Update tree with the result
         tree_update(root, &path, &amaf_map, score);

@@ -57,7 +57,7 @@
 
 - [x] **GTP protocol** - For integration with Go GUIs
 - [x] **Zobrist hashing** - For large pattern matching (used in `patterns.rs`)
-- [ ] **AMAF map in playouts** - Track which player played each point first
+- [x] **AMAF map in playouts** - Track which player played each point first
 - [ ] **Owner map** - Track territory ownership across simulations
 
 ---
@@ -293,7 +293,7 @@ if new_libs.len() >= 2 {
 
 | Issue | Severity | Location | Status |
 |-------|----------|----------|--------|
-| AMAF not updated in playout | 🔴 Critical | `playout.rs` | TODO |
+| AMAF not updated in playout | 🔴 Critical | `playout.rs` | ✅ Fixed |
 | Missing ladder attack detection | 🔴 Critical | `position.rs` | TODO |
 | Wrong PROB_RSAREJECT usage | 🔴 Critical | `playout.rs` | TODO |
 | Missing sqrt() in pattern prior | 🔴 Critical | `mcts.rs` | TODO |

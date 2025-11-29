@@ -58,12 +58,23 @@ fn random_float() -> f64 {
 /// Returns a score from the perspective of the player to move at the start:
 /// - Positive score = starting player wins
 /// - Negative score = starting player loses
-pub fn mcplayout(pos: &mut Position) -> f64 {
+///
+/// If `amaf_map` is provided, updates it with who played at each position first
+/// (1 for Black, -1 for White). This is used for RAVE/AMAF heuristic in MCTS.
+pub fn mcplayout(pos: &mut Position, mut amaf_map: Option<&mut [i8]>) -> f64 {
     let start_n = pos.n;
     let mut passes = 0;
 
     while passes < 2 && pos.n < MAX_GAME_LEN {
         if let Some(pt) = choose_playout_move(pos) {
+            // Update AMAF map before playing the move
+            if let Some(ref mut amaf) = amaf_map {
+                if amaf[pt] == 0 {
+                    // Mark with 1 for black, -1 for white
+                    // pos.n % 2 == 0 means it's Black's turn (move 0, 2, 4, ...)
+                    amaf[pt] = if pos.n % 2 == 0 { 1 } else { -1 };
+                }
+            }
             play_move(pos, pt);
             passes = 0;
         } else {

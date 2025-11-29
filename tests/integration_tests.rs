@@ -557,7 +557,7 @@ fn test_mcplayout_terminates() {
     use michi_rust::playout::mcplayout;
 
     let mut pos = Position::new();
-    let _score = mcplayout(&mut pos);
+    let _score = mcplayout(&mut pos, None);
 
     // Playout should terminate (not hang)
     // The game should have progressed
@@ -569,7 +569,7 @@ fn test_mcplayout_fills_board() {
     use michi_rust::playout::mcplayout;
 
     let mut pos = Position::new();
-    let _score = mcplayout(&mut pos);
+    let _score = mcplayout(&mut pos, None);
 
     // Count empty points
     let empty_count: usize = (0..pos.color.len())
