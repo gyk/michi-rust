@@ -117,10 +117,8 @@ const PAT_GRIDCULAR_SIZE: [usize; 13] = [0, 9, 13, 21, 29, 37, 49, 61, 73, 89, 1
 
 /// Primes used for double hashing.
 const PRIMES: [usize; 32] = [
-    5, 11, 37, 103, 293, 991, 2903, 9931,
-    7, 19, 73, 10009, 11149, 12553, 6229, 10181,
-    1013, 1583, 2503, 3491, 4637, 5501, 6571, 7459,
-    8513, 9433, 10433, 11447, 11887, 12409, 2221, 4073,
+    5, 11, 37, 103, 293, 991, 2903, 9931, 7, 19, 73, 10009, 11149, 12553, 6229, 10181, 1013, 1583,
+    2503, 3491, 4637, 5501, 6571, 7459, 8513, 9433, 10433, 11447, 11887, 12409, 2221, 4073,
 ];
 
 /// A large pattern entry in the hash table.
@@ -144,12 +142,6 @@ pub struct LargePatternDb {
     gridcular_seq1d: [isize; MAX_PATTERN_DIST],
     /// Whether patterns were successfully loaded.
     pub loaded: bool,
-}
-
-impl Default for LargePatternDb {
-    fn default() -> Self {
-        Self::new()
-    }
 }
 
 /// Global large pattern database instance.
@@ -281,16 +273,16 @@ fn compute_code(src: &[u8; 9]) -> u16 {
     let mut env8: u16 = 0;
 
     // Orthogonal neighbors (env4)
-    env8 |= code(src[1], 0);  // North
-    env8 |= code(src[5], 1);  // East
-    env8 |= code(src[7], 2);  // South
-    env8 |= code(src[3], 3);  // West
+    env8 |= code(src[1], 0); // North
+    env8 |= code(src[5], 1); // East
+    env8 |= code(src[7], 2); // South
+    env8 |= code(src[3], 3); // West
 
     // Diagonal neighbors (env4d) - shifted to high byte
-    env8 |= code(src[2], 0) << 8;  // NE
-    env8 |= code(src[8], 1) << 8;  // SE
-    env8 |= code(src[6], 2) << 8;  // SW
-    env8 |= code(src[0], 3) << 8;  // NW
+    env8 |= code(src[2], 0) << 8; // NE
+    env8 |= code(src[8], 1) << 8; // SE
+    env8 |= code(src[6], 2) << 8; // SW
+    env8 |= code(src[0], 3) << 8; // NW
 
     env8
 }
@@ -306,11 +298,11 @@ fn compute_code(src: &[u8; 9]) -> u16 {
 /// Each neighbor uses 2 bits stored at positions p and p+4.
 fn code(color: u8, p: u8) -> u16 {
     let c = match color {
-        b'O' => 0,  // WHITE
-        b'X' => 1,  // BLACK
-        b'.' => 2,  // EMPTY
-        b'#' => 3,  // OUT
-        _ => 0,     // Shouldn't happen
+        b'O' => 0, // WHITE
+        b'X' => 1, // BLACK
+        b'.' => 2, // EMPTY
+        b'#' => 3, // OUT
+        _ => 0,    // Shouldn't happen
     };
 
     let hi = (c >> 1) & 1;
@@ -414,10 +406,10 @@ impl LargePatternDb {
     #[inline]
     fn stone_color(c: u8) -> usize {
         match c {
-            b'.' => 0,          // EMPTY
-            b'#' | b' ' => 1,   // OUT
-            b'O' | b'x' => 2,   // Other/opponent
-            b'X' => 3,          // Current player
+            b'.' => 0,        // EMPTY
+            b'#' | b' ' => 1, // OUT
+            b'O' | b'x' => 2, // Other/opponent
+            b'X' => 3,        // Current player
             _ => 0,
         }
     }
@@ -462,8 +454,8 @@ impl LargePatternDb {
     /// Load patterns from .prob and .spat files.
     pub fn load_patterns(&mut self, prob_path: &Path, spat_path: &Path) -> Result<usize, String> {
         // First, load probability file to get max id
-        let prob_file = File::open(prob_path)
-            .map_err(|e| format!("Cannot open prob file: {}", e))?;
+        let prob_file =
+            File::open(prob_path).map_err(|e| format!("Cannot open prob file: {}", e))?;
         let reader = BufReader::new(prob_file);
 
         // Find max id and load probs
@@ -492,8 +484,8 @@ impl LargePatternDb {
         }
 
         // Now load spatial patterns
-        let spat_file = File::open(spat_path)
-            .map_err(|e| format!("Cannot open spat file: {}", e))?;
+        let spat_file =
+            File::open(spat_path).map_err(|e| format!("Cannot open spat file: {}", e))?;
         let reader = BufReader::new(spat_file);
 
         // Compute the 8 permutations for rotations/reflections
@@ -567,9 +559,8 @@ impl LargePatternDb {
             .map(|(x, y)| (*x as isize) - (*y as isize) * large_w)
             .collect();
 
-        let gridcular_index = |disp: isize| -> usize {
-            base_seq1d.iter().position(|&d| d == disp).unwrap_or(0)
-        };
+        let gridcular_index =
+            |disp: isize| -> usize { base_seq1d.iter().position(|&d| d == disp).unwrap_or(0) };
 
         let mut permutations = Vec::new();
         let mut seqs = vec![PAT_GRIDCULAR_SEQ.to_vec()];
@@ -801,7 +792,6 @@ pub fn matching_pattern_ids(pos: &Position, pt: Point) -> Vec<u32> {
     db.matching_pattern_ids(pos, pt)
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -828,7 +818,7 @@ mod tests {
 
     #[test]
     fn test_pat3_match_hane() {
-        use crate::position::{Position, play_move, parse_coord};
+        use crate::position::{Position, parse_coord, play_move};
 
         // Set up a position where pattern #1 (hane) should match
         // Pattern: XOX / ... / ???

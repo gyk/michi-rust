@@ -10,15 +10,15 @@
 //! The tree is expanded incrementally, and leaf nodes are evaluated using playouts.
 
 use crate::constants::{
-    BOARD_IMAX, BOARD_IMIN, BOARDSIZE, EXPAND_VISITS, N, PASS_MOVE, PRIOR_CFG,
-    PRIOR_CAPTURE_MANY, PRIOR_CAPTURE_ONE, PRIOR_EMPTYAREA, PRIOR_EVEN, PRIOR_LARGEPATTERN,
-    PRIOR_PAT3, PRIOR_SELFATARI, RAVE_EQUIV, W, EMPTY, OUT,
+    BOARD_IMAX, BOARD_IMIN, BOARDSIZE, EMPTY, EXPAND_VISITS, N, OUT, PASS_MOVE, PRIOR_CAPTURE_MANY,
+    PRIOR_CAPTURE_ONE, PRIOR_CFG, PRIOR_EMPTYAREA, PRIOR_EVEN, PRIOR_LARGEPATTERN, PRIOR_PAT3,
+    PRIOR_SELFATARI, RAVE_EQUIV, W,
 };
 use crate::patterns::{large_pattern_probability, pat3_match};
 use crate::playout::{mcplayout, random_int};
 use crate::position::{
-    all_neighbors, fix_atari_ext, gen_capture_moves_all, is_eye, pass_move, play_move, str_coord,
-    Point, Position,
+    Point, Position, all_neighbors, fix_atari_ext, gen_capture_moves_all, is_eye, pass_move,
+    play_move, str_coord,
 };
 
 /// A node in the MCTS search tree.
@@ -42,12 +42,6 @@ pub struct TreeNode {
     pub aw: u32,
     /// Child nodes (one per legal move)
     pub children: Vec<TreeNode>,
-}
-
-impl Default for TreeNode {
-    fn default() -> Self {
-        Self::new(&Position::new())
-    }
 }
 
 impl TreeNode {
@@ -128,7 +122,12 @@ pub fn expand(node: &mut TreeNode) {
 }
 
 /// Apply priors to a child node based on various heuristics.
-fn apply_priors(child: &mut TreeNode, parent_pos: &Position, pt: Point, cfg_map: &Option<[i8; BOARDSIZE]>) {
+fn apply_priors(
+    child: &mut TreeNode,
+    parent_pos: &Position,
+    pt: Point,
+    cfg_map: &Option<[i8; BOARDSIZE]>,
+) {
     // 1. CFG distance prior - moves near the last move get a bonus
     if let Some(cfg) = cfg_map {
         let dist = cfg[pt];
@@ -585,7 +584,11 @@ pub fn print_tree_summary(tree: &TreeNode, sims: usize) {
         }
         best_seq.push_str(&str_coord(best_child.pos.last));
         // Find this child in the tree to continue
-        if let Some(child) = node.children.iter().find(|c| c.pos.last == best_child.pos.last) {
+        if let Some(child) = node
+            .children
+            .iter()
+            .find(|c| c.pos.last == best_child.pos.last)
+        {
             node = child;
         } else {
             break;
@@ -605,11 +608,7 @@ pub fn print_tree_summary(tree: &TreeNode, sims: usize) {
 /// - Tracks territory ownership for display
 /// - Prints progress every REPORT_PERIOD simulations
 /// - Dumps subtree before returning
-pub fn tree_search_with_display(
-    root: &mut TreeNode,
-    sims: usize,
-    owner_map: &mut [i32],
-) -> usize {
+pub fn tree_search_with_display(root: &mut TreeNode, sims: usize, owner_map: &mut [i32]) -> usize {
     use crate::constants::{FASTPLAY5_THRES, FASTPLAY20_THRES, REPORT_PERIOD};
 
     // Initialize root if necessary
@@ -685,11 +684,7 @@ fn mcplayout_with_owner(
             // pos.n tells us how many moves were played
             // If pos.n is even, Black is to play (so 'X' = Black)
             // If pos.n is odd, White is to play (so 'X' = White)
-            let is_black = if pos.n % 2 == 0 {
-                c == b'X'
-            } else {
-                c == b'x'
-            };
+            let is_black = if pos.n % 2 == 0 { c == b'X' } else { c == b'x' };
             if is_black {
                 owner_map[pt] += 1;
             } else {

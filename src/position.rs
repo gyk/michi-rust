@@ -71,12 +71,6 @@ pub struct Position {
     pub komi: f32,
 }
 
-impl Default for Position {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl Position {
     pub fn new() -> Self {
         let mut p = Position {
@@ -201,13 +195,13 @@ pub fn put_stone(pos: &mut Position, pt: Point) {
         // BLACK to play (X=BLACK)
         // EMPTY (0b10) -> BLACK (0b01): XOR with 0x11 for position 0, 0x22 for 1, etc.
         pos.env4[(pt + n_plus_1) as usize] ^= 0x11; // South neighbor
-        pos.env4[(pt - 1) as usize] ^= 0x22;        // West neighbor
+        pos.env4[(pt - 1) as usize] ^= 0x22; // West neighbor
         pos.env4[(pt - n_plus_1) as usize] ^= 0x44; // North neighbor
-        pos.env4[(pt + 1) as usize] ^= 0x88;        // East neighbor
-        pos.env4d[(pt + n) as usize] ^= 0x11;       // SW neighbor
-        pos.env4d[(pt - w) as usize] ^= 0x22;       // NW neighbor
-        pos.env4d[(pt - n) as usize] ^= 0x44;       // NE neighbor
-        pos.env4d[(pt + w) as usize] ^= 0x88;       // SE neighbor
+        pos.env4[(pt + 1) as usize] ^= 0x88; // East neighbor
+        pos.env4d[(pt + n) as usize] ^= 0x11; // SW neighbor
+        pos.env4d[(pt - w) as usize] ^= 0x22; // NW neighbor
+        pos.env4d[(pt - n) as usize] ^= 0x44; // NE neighbor
+        pos.env4d[(pt + w) as usize] ^= 0x88; // SE neighbor
     } else {
         // WHITE to play (X=WHITE)
         // EMPTY (0b10) -> WHITE (0b00): AND with complement to clear high bit
@@ -477,7 +471,8 @@ pub fn play_move(pos: &mut Position, pt: Point) -> &'static str {
             continue;
         }
         if pos.color[n] == STONE_WHITE && group_liberties(pos, n) == 0 {
-            let group_size = collect_group_with_visited(pos, n, &mut to_remove, &mut capture_visited);
+            let group_size =
+                collect_group_with_visited(pos, n, &mut to_remove, &mut capture_visited);
             captured += group_size;
             capture_point = n;
         }
@@ -648,11 +643,7 @@ fn group_liberties(pos: &Position, start: Point) -> u32 {
 ///
 /// Returns the stones in the group and their liberties (up to `max_libs` liberties).
 /// This is similar to the C `compute_block` function.
-pub fn compute_block(
-    pos: &Position,
-    start: Point,
-    max_libs: usize,
-) -> (Vec<Point>, Vec<Point>) {
+pub fn compute_block(pos: &Position, start: Point, max_libs: usize) -> (Vec<Point>, Vec<Point>) {
     let color = pos.color[start];
     let mut stones = Vec::new();
     let mut libs = Vec::new();
@@ -689,7 +680,11 @@ pub fn compute_block(
 /// have exactly one liberty. Returns pairs of (representative stone, liberty).
 pub fn find_neighbor_blocks_in_atari(pos: &Position, stones: &[Point]) -> Vec<(Point, Point)> {
     let color = pos.color[stones[0]];
-    let opponent = if color == STONE_BLACK { STONE_WHITE } else { STONE_BLACK };
+    let opponent = if color == STONE_BLACK {
+        STONE_WHITE
+    } else {
+        STONE_BLACK
+    };
 
     let mut result = Vec::new();
     let mut block_visited = [false; BOARDSIZE];
@@ -1079,10 +1074,18 @@ const COL_LABELS: &[u8] = b"ABCDEFGHJKLMNOPQRSTUVWXYZ";
 fn display_color(c: u8, black_to_play: bool) -> char {
     match c {
         STONE_BLACK => {
-            if black_to_play { 'X' } else { 'O' }
+            if black_to_play {
+                'X'
+            } else {
+                'O'
+            }
         }
         STONE_WHITE => {
-            if black_to_play { 'O' } else { 'X' }
+            if black_to_play {
+                'O'
+            } else {
+                'X'
+            }
         }
         EMPTY => '.',
         _ => ' ',
@@ -1198,7 +1201,11 @@ pub fn print_pos(pos: &Position) {
 ///
 /// The owner_map values are cumulative: positive = Black, negative = White.
 /// The threshold is based on N_SIMS.
-pub fn format_position_with_owner(pos: &Position, owner_map: Option<&[i32]>, n_sims: usize) -> String {
+pub fn format_position_with_owner(
+    pos: &Position,
+    owner_map: Option<&[i32]>,
+    n_sims: usize,
+) -> String {
     use std::fmt::Write;
 
     let mut output = String::with_capacity(1024);
@@ -1477,8 +1484,13 @@ mod tests {
         ];
         for (i, m) in moves.iter().enumerate() {
             let result = play_move(&mut pos, parse_coord(m));
-            assert!(result.is_empty() || result.contains("suicide"),
-                    "Move {} ({}) failed: {}", i, m, result);
+            assert!(
+                result.is_empty() || result.contains("suicide"),
+                "Move {} ({}) failed: {}",
+                i,
+                m,
+                result
+            );
             assert!(env4_ok(&pos), "env4 inconsistent after move {} ({})", i, m);
         }
     }
@@ -1496,7 +1508,10 @@ mod tests {
 
         // Play more moves on the clone
         play_move(&mut cloned, parse_coord("E5"));
-        assert!(env4_ok(&cloned), "cloned env4 inconsistent after more moves");
+        assert!(
+            env4_ok(&cloned),
+            "cloned env4 inconsistent after more moves"
+        );
 
         // Original should be unchanged
         assert!(env4_ok(&pos), "original env4 affected by clone");
@@ -1521,7 +1536,12 @@ mod tests {
                 }
                 if play_move(&mut pos, pt).is_empty() {
                     // Move succeeded
-                    assert!(env4_ok(&pos), "env4 inconsistent after move at {} (n={})", pt, pos.n);
+                    assert!(
+                        env4_ok(&pos),
+                        "env4 inconsistent after move at {} (n={})",
+                        pt,
+                        pos.n
+                    );
                     found_move = true;
                     break;
                 }
@@ -1545,17 +1565,30 @@ mod tests {
 
         // Check that the display contains expected elements
         assert!(display.contains("Move: 0"), "Should show move 0");
-        assert!(display.contains("Black: 0 caps"), "Should show black captures");
-        assert!(display.contains("White: 0 caps"), "Should show white captures");
+        assert!(
+            display.contains("Black: 0 caps"),
+            "Should show black captures"
+        );
+        assert!(
+            display.contains("White: 0 caps"),
+            "Should show white captures"
+        );
         assert!(display.contains("Komi: 7.5"), "Should show komi");
 
         // Check row labels exist
         for row in 1..=N {
-            assert!(display.contains(&format!(" {} ", row)), "Should have row label {}", row);
+            assert!(
+                display.contains(&format!(" {} ", row)),
+                "Should have row label {}",
+                row
+            );
         }
 
         // Check column labels
-        assert!(display.contains(" A ") || display.contains("A B"), "Should have column labels");
+        assert!(
+            display.contains(" A ") || display.contains("A B"),
+            "Should have column labels"
+        );
     }
 
     #[test]
@@ -1567,7 +1600,10 @@ mod tests {
         // After one move by Black
         assert!(display.contains("Move: 1"), "Should show move 1");
         // The last move should be marked (with parentheses)
-        assert!(display.contains("(X)"), "Last move should be marked with (X)");
+        assert!(
+            display.contains("(X)"),
+            "Last move should be marked with (X)"
+        );
     }
 
     #[test]

@@ -18,7 +18,7 @@ use michi_rust::board::{Board, Color};
 use michi_rust::gtp::GtpEngine;
 use michi_rust::mcts::TreeNode;
 use michi_rust::patterns::{load_large_patterns, load_large_patterns_from};
-use michi_rust::position::{str_coord, Position};
+use michi_rust::position::{Position, str_coord};
 
 /// Predefined intelligence levels
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -84,7 +84,11 @@ fn main() {
     let cli = Cli::parse();
 
     match cli.command {
-        Some(Commands::Gtp { simulations, level, patterns }) => {
+        Some(Commands::Gtp {
+            simulations,
+            level,
+            patterns,
+        }) => {
             // Load patterns if specified
             load_patterns_from_arg(&patterns);
 
@@ -95,7 +99,10 @@ fn main() {
                 simulations
             };
 
-            eprintln!("michi-rust: Starting GTP with {} simulations per move", n_sims);
+            eprintln!(
+                "michi-rust: Starting GTP with {} simulations per move",
+                n_sims
+            );
 
             // Run GTP server
             let mut engine = GtpEngine::with_simulations(n_sims);
@@ -127,7 +134,9 @@ fn load_patterns_from_arg(patterns: &Option<PathBuf>) {
         // Try default locations
         match load_large_patterns() {
             Ok(n) => eprintln!("michi-rust: Loaded {} large patterns", n),
-            Err(_) => eprintln!("michi-rust: Running without large patterns (use --patterns to specify)"),
+            Err(_) => {
+                eprintln!("michi-rust: Running without large patterns (use --patterns to specify)")
+            }
         }
     }
 }

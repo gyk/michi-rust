@@ -11,7 +11,7 @@ use std::path::Path;
 use michi_rust::constants::N;
 use michi_rust::patterns::{load_large_patterns_from, matching_pattern_ids};
 use michi_rust::position::{
-    fix_atari, fix_atari_ext, parse_coord, play_move, pass_move, str_coord, Position,
+    Position, fix_atari, fix_atari_ext, parse_coord, pass_move, play_move, str_coord,
 };
 
 // =============================================================================
@@ -41,7 +41,11 @@ fn setpos(moves: &[&str]) -> Position {
 
 /// Format moves for assertion messages
 fn format_moves(moves: &[usize]) -> String {
-    moves.iter().map(|&m| str_coord(m)).collect::<Vec<_>>().join(" ")
+    moves
+        .iter()
+        .map(|&m| str_coord(m))
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 // =============================================================================

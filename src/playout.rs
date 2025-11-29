@@ -9,13 +9,12 @@
 //! - Self-atari rejection
 
 use crate::constants::{
-    BOARD_IMAX, BOARD_IMIN, EMPTY, MAX_GAME_LEN, N, W,
-    PROB_HEURISTIC_CAPTURE, PROB_HEURISTIC_PAT3, PROB_RSAREJECT, PROB_SSAREJECT,
-    STONE_BLACK,
+    BOARD_IMAX, BOARD_IMIN, EMPTY, MAX_GAME_LEN, N, PROB_HEURISTIC_CAPTURE, PROB_HEURISTIC_PAT3,
+    PROB_RSAREJECT, PROB_SSAREJECT, STONE_BLACK, W,
 };
 use crate::patterns::pat3_match;
 use crate::position::{
-    all_neighbors, fix_atari, is_eye, is_eyeish, pass_move, play_move, Point, Position,
+    Point, Position, all_neighbors, fix_atari, is_eye, is_eyeish, pass_move, play_move,
 };
 
 /// Seed the random number generator.
@@ -69,11 +68,7 @@ pub fn mcplayout(pos: &mut Position, mut amaf_map: Option<&mut [i8]>) -> f64 {
 
     // Compute score and adjust for perspective
     let s = score(pos);
-    if start_n % 2 != pos.n % 2 {
-        -s
-    } else {
-        s
-    }
+    if start_n % 2 != pos.n % 2 { -s } else { s }
 }
 
 /// Choose a move for the playout using heuristics.
@@ -181,7 +176,11 @@ fn try_move_with_self_atari_check(pos: &Position, pt: Point, is_random: bool) ->
 
     // Check for self-atari and reject with probability based on move type
     // Random moves use lower rejection rate to allow more nakade/tactical moves
-    let reject_prob = if is_random { PROB_RSAREJECT } else { PROB_SSAREJECT };
+    let reject_prob = if is_random {
+        PROB_RSAREJECT
+    } else {
+        PROB_SSAREJECT
+    };
     if random_float() < reject_prob {
         let moves = fix_atari(&test_pos, pt, true);
         if !moves.is_empty() {

@@ -29,9 +29,10 @@
 use std::io::{self, BufRead, Write};
 
 use crate::constants::{BOARDSIZE, N, N_SIMS, PASS_MOVE, RESIGN_MOVE, RESIGN_THRES};
-use crate::mcts::{tree_search_with_display, TreeNode};
+use crate::mcts::{TreeNode, tree_search_with_display};
 use crate::position::{
-    empty_position, format_position_with_owner, parse_coord, pass_move, play_move, Position, str_coord,
+    Position, empty_position, format_position_with_owner, parse_coord, pass_move, play_move,
+    str_coord,
 };
 
 /// The list of known GTP commands.
@@ -64,12 +65,6 @@ pub struct GtpEngine {
     owner_map: Vec<i32>,
     /// Start time for cputime command
     start_time: std::time::Instant,
-}
-
-impl Default for GtpEngine {
-    fn default() -> Self {
-        Self::new()
-    }
 }
 
 impl GtpEngine {
@@ -319,7 +314,8 @@ impl GtpEngine {
 
             "showboard" => {
                 // Output the board to stderr (GTP debug output) and return empty success
-                let board_str = format_position_with_owner(&self.pos, Some(&self.owner_map), self.n_sims);
+                let board_str =
+                    format_position_with_owner(&self.pos, Some(&self.owner_map), self.n_sims);
                 eprint!("{}", board_str);
                 (true, format!("\n{}", board_str.trim_end()))
             }

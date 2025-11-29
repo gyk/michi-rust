@@ -550,8 +550,8 @@ fn test_tree_expand() {
 
 #[test]
 fn test_tree_search_basic() {
-    use michi_rust::mcts::{TreeNode, tree_search};
     use michi_rust::constants::BOARDSIZE;
+    use michi_rust::mcts::{TreeNode, tree_search};
 
     let pos = Position::new();
     let mut root = TreeNode::new(&pos);
@@ -832,7 +832,11 @@ fn test_board_size() {
     use michi_rust::constants::{BOARDSIZE, N};
 
     // Board size should be 9 or 13 depending on feature
-    assert!(N == 9 || N == 13, "Board size should be 9x9 or 13x13, got {}", N);
+    assert!(
+        N == 9 || N == 13,
+        "Board size should be 9x9 or 13x13, got {}",
+        N
+    );
     assert!(BOARDSIZE > N * N, "BOARDSIZE includes padding");
 }
 
