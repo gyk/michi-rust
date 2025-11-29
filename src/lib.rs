@@ -11,6 +11,7 @@
 //! - [`playout`] - Random game simulation for position evaluation
 //! - [`patterns`] - Pattern matching (partially implemented)
 //! - [`board`] - Alternative 2D board representation
+//! - [`gtp`] - Go Text Protocol for GUI integration
 //!
 //! ## Example
 //!
@@ -32,6 +33,7 @@
 
 pub mod board;
 pub mod constants;
+pub mod gtp;
 pub mod mcts;
 pub mod patterns;
 pub mod playout;

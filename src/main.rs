@@ -3,13 +3,53 @@
 //! This is a Rust reimplementation of Michi, originally written in Python
 //! and later ported to C.
 //!
-//! Run with `cargo run` for a simple demonstration.
+//! ## Usage
+//!
+//! - `michi-rust` - Show a demo
+//! - `michi-rust gtp` - Start GTP server for GUI integration
+//! - `michi-rust demo` - Run the MCTS demo
+
+use clap::{Parser, Subcommand};
 
 use michi_rust::board::{Board, Color};
+use michi_rust::gtp::GtpEngine;
 use michi_rust::mcts::TreeNode;
-use michi_rust::position::{Position, str_coord};
+use michi_rust::position::{str_coord, Position};
+
+/// Michi-Rust: A minimalistic Go MCTS engine
+#[derive(Parser)]
+#[command(name = "michi-rust")]
+#[command(author, version, about, long_about = None)]
+struct Cli {
+    #[command(subcommand)]
+    command: Option<Commands>,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Start the GTP (Go Text Protocol) server for use with GUI applications
+    Gtp,
+    /// Run a simple demo of the engine
+    Demo,
+}
 
 fn main() {
+    let cli = Cli::parse();
+
+    match cli.command {
+        Some(Commands::Gtp) => {
+            // Run GTP server
+            let mut engine = GtpEngine::new();
+            engine.run();
+        }
+        Some(Commands::Demo) | None => {
+            // Run demo
+            run_demo();
+        }
+    }
+}
+
+fn run_demo() {
     println!("Michi-Rust: Minimalistic Go MCTS Engine\n");
 
     // Demo 1: Simple 2D board

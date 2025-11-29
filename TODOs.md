@@ -54,7 +54,7 @@
 
 ## Optional Enhancements
 
-- [ ] **GTP protocol** - For integration with Go GUIs
+- [x] **GTP protocol** - For integration with Go GUIs
 - [ ] **Zobrist hashing** - For position comparison and superko detection
 - [ ] **AMAF map in playouts** - Track which player played each point first
 - [ ] **Owner map** - Track territory ownership across simulations

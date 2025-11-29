@@ -8,8 +8,36 @@
 //! - 3x3 pattern matching
 //! - Self-atari rejection
 
-use crate::constants::{BOARD_IMAX, BOARD_IMIN, EMPTY, MAX_GAME_LEN};
-use crate::position::{Position, is_eye, is_eyeish, pass_move, play_move};
+use crate::constants::{BOARD_IMAX, BOARD_IMIN, EMPTY, MAX_GAME_LEN, N, W};
+use crate::position::{is_eye, is_eyeish, pass_move, play_move, Position};
+
+/// Simple fast random number generator (32-bit Linear Congruential Generator).
+/// Same algorithm as michi-c for reproducibility.
+static mut RNG_STATE: u32 = 1;
+
+/// Seed the random number generator.
+#[allow(dead_code)]
+pub fn seed_rng(seed: u32) {
+    unsafe {
+        RNG_STATE = if seed == 0 { 1 } else { seed };
+    }
+}
+
+/// Generate a random u32.
+#[inline]
+fn qdrandom() -> u32 {
+    unsafe {
+        RNG_STATE = RNG_STATE.wrapping_mul(1664525).wrapping_add(1013904223);
+        RNG_STATE
+    }
+}
+
+/// Generate a random integer in [0, n).
+#[inline]
+fn random_int(n: u32) -> u32 {
+    let r = qdrandom() as u64;
+    ((r * n as u64) >> 32) as u32
+}
 
 /// Perform a Monte Carlo playout from the given position.
 ///
@@ -22,7 +50,7 @@ pub fn mcplayout(pos: &mut Position) -> f64 {
     let mut passes = 0;
 
     while passes < 2 && pos.n < MAX_GAME_LEN {
-        if let Some(pt) = find_random_move(pos) {
+        if let Some(pt) = choose_random_move(pos) {
             play_move(pos, pt);
             passes = 0;
         } else {
@@ -33,27 +61,56 @@ pub fn mcplayout(pos: &mut Position) -> f64 {
 
     // Compute score and adjust for perspective
     let s = score(pos);
-    if start_n % 2 != pos.n % 2 { -s } else { s }
+    if start_n % 2 != pos.n % 2 {
+        -s
+    } else {
+        s
+    }
 }
 
-/// Find a random legal move that is not a true eye.
+/// Choose a random legal move that is not a true eye.
 ///
-/// This is a simple random policy. The C implementation uses more sophisticated
-/// heuristics (captures, patterns, locality).
-fn find_random_move(pos: &mut Position) -> Option<usize> {
-    // TODO: Use heuristics like the C code (capture, pat3, locality)
-    for pt in BOARD_IMIN..BOARD_IMAX {
-        if pos.color[pt] != EMPTY {
-            continue;
+/// Uses random starting index for fairness, similar to the C implementation.
+fn choose_random_move(pos: &Position) -> Option<usize> {
+    // Collect candidate moves (empty points that aren't true eyes)
+    let mut candidates = Vec::with_capacity(N * N);
+
+    // Start from a random index for better randomization
+    let start = BOARD_IMIN + random_int((N * W) as u32) as usize;
+
+    // Scan from start to end
+    for pt in start..BOARD_IMAX {
+        if pos.color[pt] == EMPTY && is_eye(pos, pt) != b'X' {
+            candidates.push(pt);
         }
-        // Skip true eyes for current player
-        if is_eye(pos, pt) == b'X' {
-            continue;
+    }
+    // Wrap around from beginning to start
+    for pt in BOARD_IMIN..start {
+        if pos.color[pt] == EMPTY && is_eye(pos, pt) != b'X' {
+            candidates.push(pt);
         }
-        if play_move(pos, pt).is_empty() {
+    }
+
+    if candidates.is_empty() {
+        return None;
+    }
+
+    // Shuffle and try moves until we find a legal one
+    // (some candidates might be suicide moves)
+    let n = candidates.len();
+    for i in 0..n {
+        // Pick a random remaining candidate
+        let j = i + random_int((n - i) as u32) as usize;
+        candidates.swap(i, j);
+
+        let pt = candidates[i];
+        // Test if move is legal by cloning position
+        let mut test_pos = pos.clone();
+        if play_move(&mut test_pos, pt).is_empty() {
             return Some(pt);
         }
     }
+
     None
 }
 
