@@ -50,10 +50,10 @@
 
 ## Testing
 
-- [ ] **Port C test files** - The `michi-c/tests/` directory contains:
-  - `fix_atari.tst` - Atari/ladder tests
-  - `large_pat.tst` - Large pattern tests
-  - `patterns.prob` / `patterns.spat` - Pattern data files
+- [x] **Port C test files** - The `michi-c/tests/` directory has been ported:
+  - `fix_atari.tst` - Atari/ladder tests → `tests/c_test_suite.rs`
+  - `large_pat.tst` - Large pattern tests → `tests/c_test_suite.rs`
+  - `patterns.prob` / `patterns.spat` - Pattern data files → `tests/data/`
 
 ## Optional Enhancements
 

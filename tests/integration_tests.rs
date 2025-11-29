@@ -788,22 +788,25 @@ fn test_ladder_twolib_attack() {
 
 // The following tests are placeholders for when large patterns are implemented
 // Based on michi-c/tests/large_pat.tst
+// NOTE: Full large pattern tests are now in tests/c_test_suite.rs
 
 #[test]
-#[ignore = "Requires large pattern matching - see TODOs.md"]
+#[ignore = "Covered by tests/c_test_suite.rs"]
 fn test_large_pattern_size5() {
     // From large_pat.tst test 10:
     // debug setpos D6 E6 D5 E5 D4 E3 F6 pass F5 PASS F4 Pass
     // debug match_pat E4
     // Expected: [410926] (pattern hash)
+    // See test_large_pat_10_size5 in c_test_suite.rs
 }
 
 #[test]
-#[ignore = "Requires large pattern matching - see TODOs.md"]
+#[ignore = "Covered by tests/c_test_suite.rs"]
 fn test_large_pattern_rotations() {
     // From large_pat.tst tests 20-60:
     // Test that pattern matching works with rotations and flips
     // All should return the same pattern hash [923280]
+    // See test_large_pat_20_size4 through test_large_pat_60_vertical_flip in c_test_suite.rs
 }
 
 // =============================================================================

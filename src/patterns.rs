@@ -650,6 +650,31 @@ impl LargePatternDb {
         prob
     }
 
+    /// Get all matching pattern IDs at a point.
+    /// Returns a vector of pattern IDs from smallest to largest size.
+    pub fn matching_pattern_ids(&self, pos: &Position, pt: Point) -> Vec<u32> {
+        if !self.loaded {
+            return vec![];
+        }
+
+        // Build large board representation for this point
+        let large_board = self.build_large_board(pos);
+        let large_pt = self.point_to_large_coord(pt);
+
+        let mut ids = Vec::new();
+        let mut k: ZobristHash = 0;
+
+        for s in 1..13 {
+            k = self.update_zobrist_hash(&large_board, large_pt, s, k);
+            let i = self.find_pat(k);
+            if self.patterns[i].key == k {
+                ids.push(self.patterns[i].id);
+            }
+        }
+
+        ids
+    }
+
     /// Build a large board representation with 7-layer border.
     fn build_large_board(&self, pos: &Position) -> Vec<u8> {
         let mut large_board = vec![b'#'; LARGE_BOARDSIZE];
@@ -757,6 +782,21 @@ pub fn large_patterns_loaded() -> bool {
         None => false,
     }
 }
+
+/// Get all matching pattern IDs at a point.
+/// Returns a vector of pattern IDs from smallest to largest size.
+pub fn matching_pattern_ids(pos: &Position, pt: Point) -> Vec<u32> {
+    let db = match LARGE_PATTERN_DB.get() {
+        Some(db) => db,
+        None => return vec![],
+    };
+    let db = match db.read() {
+        Ok(db) => db,
+        Err(_) => return vec![],
+    };
+    db.matching_pattern_ids(pos, pt)
+}
+
 
 #[cfg(test)]
 mod tests {
