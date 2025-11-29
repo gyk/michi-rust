@@ -801,32 +801,66 @@ pub fn fix_atari_ext(
     twolib_test: bool,
     twolib_edgeonly: bool,
 ) -> Vec<Point> {
+    let (moves, _) = fix_atari_with_sizes(pos, pt, singlept_ok, twolib_test, twolib_edgeonly);
+    moves
+}
+
+/// Extended version of fix_atari that also returns group sizes for each move.
+///
+/// Parameters:
+/// - `pos`: Current position
+/// - `pt`: A point in the group to check
+/// - `singlept_ok`: If true, don't try to save single-stone groups
+/// - `twolib_test`: If true, also check groups with 2 liberties for ladder captures
+/// - `twolib_edgeonly`: If true and twolib_test is true, only check ladders when
+///                      both liberties are on the edge (line 0). This optimization
+///                      skips expensive ladder calculations for interior groups.
+///
+/// Returns:
+/// - `moves`: List of moves that can capture/save the group
+/// - `sizes`: Parallel list of group sizes corresponding to each move
+///
+/// This matches the C `fix_atari` function which returns both moves and sizes:
+/// ```c
+/// int fix_atari(Position *pos, Point pt, int singlept_ok,
+///         int twolib_test, int twolib_edgeonly, Slist moves, Slist sizes)
+/// ```
+pub fn fix_atari_with_sizes(
+    pos: &Position,
+    pt: Point,
+    singlept_ok: bool,
+    twolib_test: bool,
+    twolib_edgeonly: bool,
+) -> (Vec<Point>, Vec<usize>) {
     let mut moves = Vec::new();
+    let mut sizes = Vec::new();
 
     // Compute the block
     let (stones, libs) = compute_block(pos, pt, 3);
+    let group_size = stones.len();
 
     // If single stone and singlept_ok, don't bother
-    if singlept_ok && stones.len() == 1 {
-        return moves;
+    if singlept_ok && group_size == 1 {
+        return (moves, sizes);
     }
 
     // If 2 or more liberties, check for ladder captures (if enabled)
     if libs.len() >= 2 {
         // Test groups with exactly 2 liberties for ladder captures
-        if twolib_test && libs.len() == 2 && stones.len() > 1 {
+        if twolib_test && libs.len() == 2 && group_size > 1 {
             // twolib_edgeonly: skip expensive ladder check unless both libs are on edge
             if twolib_edgeonly && (line_height(libs[0]) > 0 || line_height(libs[1]) > 0) {
-                return moves; // Not on edge, skip ladder check
+                return (moves, sizes); // Not on edge, skip ladder check
             }
 
             // Check if this group can be captured via ladder
             let ladder_move = read_ladder_attack(pos, pt, &libs);
             if ladder_move != 0 {
                 moves.push(ladder_move);
+                sizes.push(group_size);
             }
         }
-        return moves;
+        return (moves, sizes);
     }
 
     // Block is in atari (exactly 1 liberty)
@@ -835,7 +869,8 @@ pub fn fix_atari_ext(
     if pos.color[pt] == STONE_WHITE {
         // This is opponent's group - we can capture it!
         moves.push(lib);
-        return moves;
+        sizes.push(group_size);
+        return (moves, sizes);
     }
 
     // This is our group and it's in atari
@@ -844,6 +879,7 @@ pub fn fix_atari_ext(
     for (_, capture_lib) in atari_neighbors {
         if !moves.contains(&capture_lib) {
             moves.push(capture_lib);
+            sizes.push(group_size);
         }
     }
 
@@ -851,7 +887,8 @@ pub fn fix_atari_ext(
     // First check if it would actually give us more liberties
     let mut test_pos = pos.clone();
     if play_move(&mut test_pos, lib).is_empty() {
-        let (_, new_libs) = compute_block(&test_pos, lib, 3);
+        // After playing the escape move, re-compute the block to get new stones count
+        let (new_stones, new_libs) = compute_block(&test_pos, lib, 3);
         if new_libs.len() >= 2 {
             // Good, we escape - but check we're not walking into a ladder
             // Accept escape if:
@@ -865,12 +902,14 @@ pub fn fix_atari_ext(
             {
                 if !moves.contains(&lib) {
                     moves.push(lib);
+                    // Use the new (post-escape) group size, matching C behavior
+                    sizes.push(new_stones.len());
                 }
             }
         }
     }
 
-    moves
+    (moves, sizes)
 }
 
 /// Generate capture moves in the neighborhood of recent moves.
@@ -956,14 +995,13 @@ fn gen_capture_moves_in_set(
 
         if pos.color[pt] == STONE_BLACK || pos.color[pt] == STONE_WHITE {
             checked[pt] = true;
-            // Use fix_atari_ext with twolib_edgeonly parameter
-            let atari_moves = fix_atari_ext(pos, pt, false, true, twolib_edgeonly);
+            // Use fix_atari_with_sizes to get both moves and their group sizes
+            let (atari_moves, atari_sizes) =
+                fix_atari_with_sizes(pos, pt, false, true, twolib_edgeonly);
 
-            for m in atari_moves {
-                // Get the size of the group that would be affected
-                let (stones, _) = compute_block(pos, pt, 1);
-                if !moves.iter().any(|(mv, _)| *mv == m) {
-                    moves.push((m, stones.len()));
+            for (i, m) in atari_moves.iter().enumerate() {
+                if !moves.iter().any(|(mv, _)| mv == m) {
+                    moves.push((*m, atari_sizes[i]));
                 }
             }
         }

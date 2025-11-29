@@ -266,7 +266,7 @@ matches the C behavior with `twolib_edgeonly=false` for full ladder analysis.
 
 ---
 
-### 7. Missing group size tracking (`position.rs`)
+### 7. Missing group size tracking (`position.rs`) ✅ FIXED
 
 **C version returns sizes:**
 ```c
@@ -274,12 +274,18 @@ int fix_atari(Position *pos, Point pt, int singlept_ok,
         int twolib_test, int twolib_edgeonly, Slist moves, Slist sizes)
 ```
 
-**Rust version only returns moves:**
+**Rust version now has:**
 ```rust
-pub fn fix_atari(pos: &Position, pt: Point, singlept_ok: bool) -> Vec<Point>
+pub fn fix_atari_with_sizes(
+    pos: &Position, pt: Point, singlept_ok: bool,
+    twolib_test: bool, twolib_edgeonly: bool,
+) -> (Vec<Point>, Vec<usize>)
 ```
 
-**Impact:** Cannot prioritize captures of larger groups over smaller ones.
+**Status:** Fixed - `fix_atari_with_sizes` returns parallel lists of moves and their
+associated group sizes. The `gen_capture_moves_in_set` function now uses this to
+properly track group sizes for MCTS priors, allowing `PRIOR_CAPTURE_ONE` vs
+`PRIOR_CAPTURE_MANY` distinction based on the actual group size being captured.
 
 ---
 
@@ -352,7 +358,7 @@ ladder analysis (matching C's `expensive_ok=1` parameter).
 | Missing sqrt() in pattern prior | 🔴 Critical | `mcts.rs` | ✅ Fixed |
 | Self-atari prior uses edge-only optimization | 🟡 Medium | `mcts.rs` | ✅ Fixed |
 | Missing shuffle in most_urgent() | 🟡 Medium | `mcts.rs` | ✅ Fixed |
-| Missing group size tracking | 🟡 Medium | `position.rs` | TODO |
+| Missing group size tracking | 🟡 Medium | `position.rs` | ✅ Fixed |
 | Escape ladder check skipped too easily | 🟡 Medium | `position.rs` | ✅ Fixed |
 | Capture priors only check neighbors | 🔴 Critical | `mcts.rs` | ✅ Fixed |
 
