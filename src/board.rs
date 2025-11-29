@@ -65,10 +65,8 @@ impl Board {
         let mut total_captures = 0;
         let mut to_remove: Vec<Point> = Vec::new();
         for (nx, ny) in self.neighbors(x, y) {
-            if self.get(nx, ny) == Some(opp) {
-                if self.group_liberties(nx, ny) == 0 {
-                    total_captures += self.collect_group(nx, ny, &mut to_remove);
-                }
+            if self.get(nx, ny) == Some(opp) && self.group_liberties(nx, ny) == 0 {
+                total_captures += self.collect_group(nx, ny, &mut to_remove);
             }
         }
         for (rx, ry) in to_remove {
@@ -123,6 +121,7 @@ impl Board {
         let color = self.get(x, y).unwrap();
         let mut stack = vec![(x, y)];
         let mut visited = vec![false; self.size * self.size];
+        let mut liberty_visited = vec![false; self.size * self.size]; // Track visited liberties
         let mut liberties = 0;
         while let Some((cx, cy)) = stack.pop() {
             let i = self.idx(cx, cy);
@@ -134,7 +133,12 @@ impl Board {
                 for (nx, ny) in self.neighbors(cx, cy) {
                     let ni = self.idx(nx, ny);
                     match self.get(nx, ny) {
-                        None => liberties += 1,
+                        None => {
+                            if !liberty_visited[ni] {
+                                liberty_visited[ni] = true;
+                                liberties += 1;
+                            }
+                        }
                         Some(c) if c == color && !visited[ni] => stack.push((nx, ny)),
                         _ => {}
                     }
