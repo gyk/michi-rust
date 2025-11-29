@@ -15,7 +15,7 @@ use crate::constants::{
     PRIOR_SELFATARI, RAVE_EQUIV, W,
 };
 use crate::patterns::{large_pattern_probability, pat3_match};
-use crate::playout::{mcplayout, random_int};
+use crate::playout::mcplayout;
 use crate::position::{
     Point, Position, all_neighbors, fix_atari_ext, gen_capture_moves_all, is_eye, pass_move,
     play_move, str_coord,
@@ -293,11 +293,7 @@ fn most_urgent(children: &mut [TreeNode]) -> usize {
 
     // Shuffle the children array to randomize selection when urgencies are equal
     // This is important for exploration diversity, especially early in search
-    let n = children.len();
-    for i in 0..n {
-        let j = i + random_int((n - i) as u32) as usize;
-        children.swap(i, j);
-    }
+    fastrand::shuffle(children);
 
     // Find the child with maximum urgency
     children

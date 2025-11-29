@@ -23,12 +23,6 @@ pub fn seed_rng(seed: u64) {
     fastrand::seed(seed);
 }
 
-/// Generate a random integer in [0, n).
-#[inline]
-pub fn random_int(n: u32) -> u32 {
-    fastrand::u32(0..n)
-}
-
 /// Generate a random float in [0, 1).
 #[inline]
 fn random_float() -> f64 {
@@ -128,11 +122,7 @@ fn make_list_last_moves_neighbors(pos: &Position) -> Vec<Point> {
     }
 
     // Shuffle for randomization
-    let len = points.len();
-    for i in 0..len {
-        let j = i + random_int((len - i) as u32) as usize;
-        points.swap(i, j);
-    }
+    fastrand::shuffle(&mut points);
 
     points
 }
@@ -200,7 +190,7 @@ fn choose_random_move(pos: &Position) -> Option<usize> {
     let mut candidates = Vec::with_capacity(N * N);
 
     // Start from a random index for better randomization
-    let start = BOARD_IMIN + random_int((N * W) as u32) as usize;
+    let start = BOARD_IMIN + fastrand::usize(0..N * W);
 
     // Scan from start to end
     for pt in start..BOARD_IMAX {
@@ -224,7 +214,7 @@ fn choose_random_move(pos: &Position) -> Option<usize> {
     let n = candidates.len();
     for i in 0..n {
         // Pick a random remaining candidate
-        let j = i + random_int((n - i) as u32) as usize;
+        let j = i + fastrand::usize(0..n - i);
         candidates.swap(i, j);
 
         let pt = candidates[i];
