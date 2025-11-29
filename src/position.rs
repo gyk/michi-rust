@@ -44,6 +44,13 @@ impl std::fmt::Display for MoveError {
 pub struct Position {
     /// Board state: 'X' = current player, 'x' = opponent, '.' = empty, ' ' = out of bounds
     pub color: [u8; BOARDSIZE],
+    /// Encoded colors of 4 orthogonal neighbors (N, E, S, W) for pattern matching.
+    /// Each neighbor uses 2 bits: 0=WHITE, 1=BLACK, 2=EMPTY, 3=OUT.
+    /// Updated incrementally when stones are placed/removed.
+    pub env4: [u8; BOARDSIZE],
+    /// Encoded colors of 4 diagonal neighbors (NE, SE, SW, NW) for pattern matching.
+    /// Uses same encoding as `env4`.
+    pub env4d: [u8; BOARDSIZE],
     /// Move number (0 = start of game)
     pub n: usize,
     /// Ko point (0 if no ko)
@@ -74,6 +81,8 @@ impl Position {
     pub fn new() -> Self {
         let mut p = Position {
             color: [b' '; BOARDSIZE],
+            env4: [0; BOARDSIZE],
+            env4d: [0; BOARDSIZE],
             n: 0,
             ko: 0,
             ko_old: 0,
@@ -87,6 +96,197 @@ impl Position {
         empty_position(&mut p);
         p
     }
+}
+
+// =============================================================================
+// Env4/Env4d: Neighbor color encoding for fast pattern matching
+// =============================================================================
+
+/// Color encoding for env4/env4d arrays.
+/// These encode neighbor colors using absolute colors (BLACK/WHITE) not relative (X/x).
+#[repr(u8)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Env4Color {
+    White = 0,
+    Black = 1,
+    Empty = 2,
+    Out = 3,
+}
+
+impl From<u8> for Env4Color {
+    fn from(c: u8) -> Self {
+        match c {
+            0 => Env4Color::White,
+            1 => Env4Color::Black,
+            2 => Env4Color::Empty,
+            _ => Env4Color::Out,
+        }
+    }
+}
+
+/// Compute the env4 value for a point from scratch.
+///
+/// `offset` determines which neighbors to encode:
+/// - `0` = orthogonal neighbors (N, E, S, W) for `env4`
+/// - `4` = diagonal neighbors (NE, SE, SW, NW) for `env4d`
+///
+/// The encoding uses absolute colors:
+/// - 0: WHITE
+/// - 1: BLACK
+/// - 2: EMPTY
+/// - 3: OUT (off-board)
+///
+/// Each of the 4 neighbors uses 2 bits, stored in a single byte:
+/// - Bits 0,4: First neighbor (high bit in position 4, low bit in position 0)
+/// - Bits 1,5: Second neighbor
+/// - Bits 2,6: Third neighbor
+/// - Bits 3,7: Fourth neighbor
+pub fn compute_env4(pos: &Position, pt: Point, offset: usize) -> u8 {
+    let mut env4: u8 = 0;
+
+    for k in 0..4 {
+        let n = (pt as isize + DELTA[offset + k]) as usize;
+
+        // Determine color code: 0=WHITE, 1=BLACK, 2=EMPTY, 3=OUT
+        let c: u8 = if pos.color[n] == EMPTY {
+            2 // EMPTY
+        } else if pos.color[n] == OUT {
+            3 // OUT
+        } else {
+            // env4 uses absolute colors based on move number
+            if pos.n % 2 == 0 {
+                // BLACK to play (X=BLACK, x=WHITE)
+                if pos.color[n] == STONE_BLACK { 1 } else { 0 }
+            } else {
+                // WHITE to play (X=WHITE, x=BLACK)
+                if pos.color[n] == STONE_BLACK { 0 } else { 1 }
+            }
+        };
+
+        // Pack into the byte: high bit at position k+4, low bit at position k
+        let hi = c >> 1;
+        let lo = c & 1;
+        env4 |= ((hi << 4) | lo) << k;
+    }
+
+    env4
+}
+
+/// Place a stone on the board and update env4/env4d arrays incrementally.
+///
+/// Always places a stone of color 'X' (current player).
+/// Updates the neighbor encodings of all adjacent points.
+pub fn put_stone(pos: &mut Position, pt: Point) {
+    // Update env4 for orthogonal neighbors
+    // When a stone is placed, neighbors see this point change from EMPTY to a stone
+    //
+    // Neighbor layout for env4 updates:
+    // - South neighbor (pt + N+1) sees pt at its North (bit position 0)
+    // - West neighbor (pt - 1) sees pt at its East (bit position 1)
+    // - North neighbor (pt - N-1) sees pt at its South (bit position 2)
+    // - East neighbor (pt + 1) sees pt at its West (bit position 3)
+    //
+    // For env4d:
+    // - SW neighbor (pt + N) sees pt at its NE (bit position 0)
+    // - NW neighbor (pt - W) sees pt at its SE (bit position 1)
+    // - NE neighbor (pt - N) sees pt at its SW (bit position 2)
+    // - SE neighbor (pt + W) sees pt at its NW (bit position 3)
+
+    let pt = pt as isize;
+    let n_plus_1 = (N + 1) as isize;
+    let w = W as isize;
+    let n = N as isize;
+
+    if pos.n % 2 == 0 {
+        // BLACK to play (X=BLACK)
+        // EMPTY (0b10) -> BLACK (0b01): XOR with 0x11 for position 0, 0x22 for 1, etc.
+        pos.env4[(pt + n_plus_1) as usize] ^= 0x11; // South neighbor
+        pos.env4[(pt - 1) as usize] ^= 0x22;        // West neighbor
+        pos.env4[(pt - n_plus_1) as usize] ^= 0x44; // North neighbor
+        pos.env4[(pt + 1) as usize] ^= 0x88;        // East neighbor
+        pos.env4d[(pt + n) as usize] ^= 0x11;       // SW neighbor
+        pos.env4d[(pt - w) as usize] ^= 0x22;       // NW neighbor
+        pos.env4d[(pt - n) as usize] ^= 0x44;       // NE neighbor
+        pos.env4d[(pt + w) as usize] ^= 0x88;       // SE neighbor
+    } else {
+        // WHITE to play (X=WHITE)
+        // EMPTY (0b10) -> WHITE (0b00): AND with complement to clear high bit
+        pos.env4[(pt + n_plus_1) as usize] &= 0xEE;
+        pos.env4[(pt - 1) as usize] &= 0xDD;
+        pos.env4[(pt - n_plus_1) as usize] &= 0xBB;
+        pos.env4[(pt + 1) as usize] &= 0x77;
+        pos.env4d[(pt + n) as usize] &= 0xEE;
+        pos.env4d[(pt - w) as usize] &= 0xDD;
+        pos.env4d[(pt - n) as usize] &= 0xBB;
+        pos.env4d[(pt + w) as usize] &= 0x77;
+    }
+    pos.color[pt as usize] = STONE_BLACK;
+}
+
+/// Remove a stone from the board and update env4/env4d arrays incrementally.
+///
+/// Always removes a stone of color 'x' (opponent).
+/// Updates the neighbor encodings of all adjacent points.
+pub fn remove_stone(pos: &mut Position, pt: Point) {
+    // Update env4 for orthogonal neighbors
+    // When a stone is removed, neighbors see this point change from a stone to EMPTY
+
+    let pt = pt as isize;
+    let n_plus_1 = (N + 1) as isize;
+    let w = W as isize;
+    let n = N as isize;
+
+    if pos.n % 2 == 0 {
+        // BLACK to play (x=WHITE)
+        // WHITE (0b00) -> EMPTY (0b10): OR with 0x10 for position 0 to set high bit
+        pos.env4[(pt + n_plus_1) as usize] |= 0x10;
+        pos.env4[(pt - 1) as usize] |= 0x20;
+        pos.env4[(pt - n_plus_1) as usize] |= 0x40;
+        pos.env4[(pt + 1) as usize] |= 0x80;
+        pos.env4d[(pt + n) as usize] |= 0x10;
+        pos.env4d[(pt - w) as usize] |= 0x20;
+        pos.env4d[(pt - n) as usize] |= 0x40;
+        pos.env4d[(pt + w) as usize] |= 0x80;
+    } else {
+        // WHITE to play (x=BLACK)
+        // BLACK (0b01) -> EMPTY (0b10): XOR with 0x11 for each position
+        pos.env4[(pt + n_plus_1) as usize] ^= 0x11;
+        pos.env4[(pt - 1) as usize] ^= 0x22;
+        pos.env4[(pt - n_plus_1) as usize] ^= 0x44;
+        pos.env4[(pt + 1) as usize] ^= 0x88;
+        pos.env4d[(pt + n) as usize] ^= 0x11;
+        pos.env4d[(pt - w) as usize] ^= 0x22;
+        pos.env4d[(pt - n) as usize] ^= 0x44;
+        pos.env4d[(pt + w) as usize] ^= 0x88;
+    }
+    pos.color[pt as usize] = EMPTY;
+}
+
+/// Verify that env4/env4d arrays are consistent with the board state.
+///
+/// This is a debug function that recomputes env4/env4d from scratch
+/// and compares with the stored values. Returns true if consistent.
+#[cfg(debug_assertions)]
+pub fn env4_ok(pos: &Position) -> bool {
+    for pt in BOARD_IMIN..BOARD_IMAX {
+        if pos.color[pt] == OUT {
+            continue;
+        }
+        let computed_env4 = compute_env4(pos, pt, 0);
+        if pos.env4[pt] != computed_env4 {
+            return false;
+        }
+        let computed_env4d = compute_env4(pos, pt, 4);
+        if pos.env4d[pt] != computed_env4d {
+            return false;
+        }
+    }
+    true
+}
+
+#[cfg(not(debug_assertions))]
+pub fn env4_ok(_pos: &Position) -> bool {
+    true
 }
 
 /// Reset a position to the initial empty board state.
@@ -116,6 +316,16 @@ pub fn empty_position(pos: &mut Position) -> &'static str {
         pos.color[k] = b' ';
         k += 1;
     }
+
+    // Initialize env4/env4d arrays
+    for pt in BOARD_IMIN..BOARD_IMAX {
+        if pos.color[pt] == OUT {
+            continue;
+        }
+        pos.env4[pt] = compute_env4(pos, pt, 0);
+        pos.env4d[pt] = compute_env4(pos, pt, 4);
+    }
+
     pos.ko = 0;
     pos.last = 0;
     pos.last2 = 0;
@@ -123,6 +333,8 @@ pub fn empty_position(pos: &mut Position) -> &'static str {
     pos.cap = 0;
     pos.cap_x = 0;
     pos.n = 0;
+
+    debug_assert!(env4_ok(pos), "env4/env4d initialization failed");
     ""
 }
 
@@ -251,22 +463,29 @@ pub fn play_move(pos: &mut Position, pt: Point) -> &'static str {
     // Check if playing into enemy eye (for ko detection)
     let in_enemy_eye = is_eyeish(pos, pt);
 
-    pos.color[pt] = STONE_BLACK;
+    // Place the stone using put_stone (updates env4/env4d)
+    put_stone(pos, pt);
+
     let mut captured = 0u32;
     let mut capture_point: Point = 0;
     let mut to_remove: Vec<Point> = Vec::new();
+    let mut capture_visited = [false; BOARDSIZE]; // Track which stones we've already marked for capture
 
     for n in neighbors(pt) {
+        // Skip if we've already processed this stone (part of a group we already captured)
+        if capture_visited[n] {
+            continue;
+        }
         if pos.color[n] == STONE_WHITE && group_liberties(pos, n) == 0 {
-            let group_size = collect_group(pos, n, &mut to_remove);
+            let group_size = collect_group_with_visited(pos, n, &mut to_remove, &mut capture_visited);
             captured += group_size;
             capture_point = n;
         }
     }
 
-    // Remove captured stones
+    // Remove captured stones using remove_stone (updates env4/env4d)
     for &r in &to_remove {
-        pos.color[r] = EMPTY;
+        remove_stone(pos, r);
     }
 
     if captured > 0 {
@@ -280,7 +499,21 @@ pub fn play_move(pos: &mut Position, pt: Point) -> &'static str {
         // Test for suicide
         pos.ko = 0;
         if group_liberties(pos, pt) == 0 {
+            // Undo the stone placement (need to restore env4/env4d too)
             pos.color[pt] = EMPTY;
+            // Restore env4/env4d by recomputing (simpler than inverse of put_stone)
+            for k in 0..4 {
+                let n = (pt as isize + DELTA[k]) as usize;
+                if pos.color[n] != OUT {
+                    pos.env4[n] = compute_env4(pos, n, 0);
+                }
+            }
+            for k in 4..8 {
+                let n = (pt as isize + DELTA[k]) as usize;
+                if pos.color[n] != OUT {
+                    pos.env4d[n] = compute_env4(pos, n, 4);
+                }
+            }
             pos.ko = pos.ko_old;
             return "Error Illegal move: suicide";
         }
@@ -296,6 +529,8 @@ pub fn play_move(pos: &mut Position, pt: Point) -> &'static str {
     pos.last3 = pos.last2;
     pos.last2 = pos.last;
     pos.last = pt;
+
+    debug_assert!(env4_ok(pos), "env4/env4d inconsistent after play_move");
     ""
 }
 
@@ -331,10 +566,25 @@ pub fn all_neighbors(pt: Point) -> [Point; 8] {
 ///
 /// Uses flood-fill to find all connected stones of the same color.
 /// Returns the number of stones in the group and appends them to `out`.
+#[allow(dead_code)]
 fn collect_group(pos: &Position, start: Point, out: &mut Vec<Point>) -> u32 {
+    let mut visited = [false; BOARDSIZE];
+    collect_group_with_visited(pos, start, out, &mut visited)
+}
+
+/// Collect all stones in a group, using a provided visited array.
+///
+/// This version allows sharing the visited array across multiple calls,
+/// which prevents collecting the same stone twice when processing multiple
+/// adjacent groups.
+fn collect_group_with_visited(
+    pos: &Position,
+    start: Point,
+    out: &mut Vec<Point>,
+    visited: &mut [bool; BOARDSIZE],
+) -> u32 {
     let color = pos.color[start];
     let mut stack = vec![start];
-    let mut visited = [false; BOARDSIZE];
     let mut count = 0u32;
 
     while let Some(pt) = stack.pop() {
@@ -568,4 +818,108 @@ mod tests {
         let pt = parse_coord("A1");
         assert_eq!(is_eye(&pos, pt), 0);
     }
+
+    #[test]
+    fn test_env4_after_moves() {
+        let mut pos = Position::new();
+
+        // Play a few moves and verify env4 consistency after each
+        let moves = ["D4", "E4", "D5", "E5", "C4", "F4"];
+        for m in moves {
+            let pt = parse_coord(m);
+            let result = play_move(&mut pos, pt);
+            assert!(result.is_empty(), "Move {} should be legal: {}", m, result);
+            assert!(env4_ok(&pos), "env4 inconsistent after move {}", m);
+        }
+    }
+
+    #[test]
+    fn test_env4_after_capture() {
+        let mut pos = Position::new();
+
+        // Set up a capture scenario
+        play_move(&mut pos, parse_coord("B1")); // Black
+        assert!(env4_ok(&pos), "env4 inconsistent after B1");
+        play_move(&mut pos, parse_coord("A1")); // White in corner
+        assert!(env4_ok(&pos), "env4 inconsistent after A1");
+        play_move(&mut pos, parse_coord("A2")); // Black captures
+
+        // After capture, env4 should still be consistent
+        assert!(env4_ok(&pos), "env4 inconsistent after capture");
+    }
+
+    #[test]
+    fn test_env4_many_captures() {
+        // Test many captures to catch edge cases
+        let mut pos = Position::new();
+        let moves = [
+            "D4", "E4", // Black, White
+            "D5", "E5", // Black, White
+            "D6", "F4", // Black, White far
+            "E6", "F5", // Black, White (E5 group loses liberty)
+            "F6", // Black captures E4, E5
+        ];
+        for (i, m) in moves.iter().enumerate() {
+            let result = play_move(&mut pos, parse_coord(m));
+            assert!(result.is_empty() || result.contains("suicide"),
+                    "Move {} ({}) failed: {}", i, m, result);
+            assert!(env4_ok(&pos), "env4 inconsistent after move {} ({})", i, m);
+        }
+    }
+
+    #[test]
+    fn test_env4_clone() {
+        let mut pos = Position::new();
+        play_move(&mut pos, parse_coord("D4"));
+        play_move(&mut pos, parse_coord("E4"));
+        play_move(&mut pos, parse_coord("D5"));
+
+        // Clone the position
+        let mut cloned = pos.clone();
+        assert!(env4_ok(&cloned), "cloned env4 inconsistent");
+
+        // Play more moves on the clone
+        play_move(&mut cloned, parse_coord("E5"));
+        assert!(env4_ok(&cloned), "cloned env4 inconsistent after more moves");
+
+        // Original should be unchanged
+        assert!(env4_ok(&pos), "original env4 affected by clone");
+    }
+
+    #[test]
+    fn test_env4_playout_simulation() {
+        use crate::constants::MAX_GAME_LEN;
+
+        // Simulate what mcplayout does
+        let mut pos = Position::new();
+        let mut passes = 0;
+
+        while passes < 2 && pos.n < MAX_GAME_LEN {
+            let mut found_move = false;
+            for pt in BOARD_IMIN..BOARD_IMAX {
+                if pos.color[pt] != EMPTY {
+                    continue;
+                }
+                if is_eye(&pos, pt) == b'X' {
+                    continue;
+                }
+                if play_move(&mut pos, pt).is_empty() {
+                    // Move succeeded
+                    assert!(env4_ok(&pos), "env4 inconsistent after move at {} (n={})", pt, pos.n);
+                    found_move = true;
+                    break;
+                }
+            }
+
+            if found_move {
+                passes = 0;
+            } else {
+                pass_move(&mut pos);
+                passes += 1;
+            }
+        }
+
+        assert!(env4_ok(&pos), "env4 inconsistent after playout simulation");
+    }
 }
+

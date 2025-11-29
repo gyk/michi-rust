@@ -2,7 +2,7 @@
 
 ## Pattern Matching
 
-- [ ] **`env4`/`env4d` arrays** - Encode neighbor colors (4 orthogonal + 4 diagonal) for fast pattern matching. These are updated incrementally when stones are placed/removed.
+- [x] **`env4`/`env4d` arrays** - Encode neighbor colors (4 orthogonal + 4 diagonal) for fast pattern matching. These are updated incrementally when stones are placed/removed.
 
 - [ ] **Pattern tables (`pat3set`)** - 3x3 pattern matching infrastructure from `patterns.c`. Requires:
   - `make_pat3set()` - Initialize the pattern bitfield
