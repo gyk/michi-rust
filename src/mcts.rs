@@ -678,35 +678,22 @@ fn mcplayout_with_owner(
 
     // Update owner map based on final position
     // Positive for Black stones/territory, negative for White
+    // n = 1 if Black to play, -1 if White to play (same as C version)
+    let n: i32 = if pos.n % 2 == 0 { 1 } else { -1 };
+
     for pt in BOARD_IMIN..BOARD_IMAX {
-        let c = pos.color[pt];
-        if c == b'X' || c == b'x' {
-            // Stone on the board - determine color
-            // After playout, 'X' is the player to move at end, 'x' is opponent
-            // We need to know who was Black originally
-            // pos.n tells us how many moves were played
-            // If pos.n is even, Black is to play (so 'X' = Black)
-            // If pos.n is odd, White is to play (so 'X' = White)
-            let is_black = if pos.n % 2 == 0 { c == b'X' } else { c == b'x' };
-            if is_black {
-                owner_map[pt] += 1;
-            } else {
-                owner_map[pt] -= 1;
-            }
-        } else if c == EMPTY {
-            let owner = is_eyeish(pos, pt);
-            if owner == b'X' || owner == b'x' {
-                let is_black = if pos.n % 2 == 0 {
-                    owner == b'X'
-                } else {
-                    owner == b'x'
-                };
-                if is_black {
-                    owner_map[pt] += 1;
-                } else {
-                    owner_map[pt] -= 1;
-                }
-            }
+        // For empty points, check if surrounded by one color (territory)
+        let c = if pos.color[pt] == EMPTY {
+            is_eyeish(pos, pt)
+        } else {
+            pos.color[pt]
+        };
+
+        // 'X' = current player's stones/territory, 'x' = opponent's
+        match c {
+            b'X' => owner_map[pt] += n,
+            b'x' => owner_map[pt] -= n,
+            _ => {}
         }
     }
 
