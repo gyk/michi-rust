@@ -23,7 +23,7 @@
   - `fix_atari_ext()` - Extended version with `twolib_test` and `twolib_edgeonly` options
   - `make_list_neighbor_blocks_in_atari()` - Find opponent blocks in atari (as `find_neighbor_blocks_in_atari`)
 
-- [ ] **`compute_cfg_distances`** - Common fate graph distances for locality priors. Used to give higher priority to moves near the last move.
+- [x] **`compute_cfg_distances`** - Common fate graph distances for locality priors. Used to give higher priority to moves near the last move.
 
 ## Playout Improvements
 
@@ -44,7 +44,7 @@
   - Self-atari detection (`PRIOR_SELFATARI` as negative prior)
   - Empty area detection (`PRIOR_EMPTYAREA`)
 
-- [ ] **Early termination** - Stop search early if winrate is very high:
+- [x] **Early termination** - Stop search early if winrate is very high:
   - `FASTPLAY5_THRES` (0.95) at 5% of simulations
   - `FASTPLAY20_THRES` (0.8) at 20% of simulations
 
