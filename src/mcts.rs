@@ -11,10 +11,10 @@
 
 use crate::constants::{
     BOARD_IMAX, BOARD_IMIN, BOARDSIZE, EXPAND_VISITS, N, PASS_MOVE, PRIOR_CFG,
-    PRIOR_CAPTURE_MANY, PRIOR_CAPTURE_ONE, PRIOR_EMPTYAREA, PRIOR_EVEN, PRIOR_PAT3,
-    PRIOR_SELFATARI, RAVE_EQUIV, W, EMPTY, OUT,
+    PRIOR_CAPTURE_MANY, PRIOR_CAPTURE_ONE, PRIOR_EMPTYAREA, PRIOR_EVEN, PRIOR_LARGEPATTERN,
+    PRIOR_PAT3, PRIOR_SELFATARI, RAVE_EQUIV, W, EMPTY, OUT,
 };
-use crate::patterns::pat3_match;
+use crate::patterns::{large_pattern_probability, pat3_match};
 use crate::playout::mcplayout;
 use crate::position::{
     all_neighbors, fix_atari, gen_capture_moves, is_eye, pass_move, play_move, str_coord,
@@ -145,7 +145,15 @@ fn apply_priors(child: &mut TreeNode, parent_pos: &Position, pt: Point, cfg_map:
         child.pw += PRIOR_PAT3;
     }
 
-    // 3. Capture prior - check if this move captures or saves stones
+    // 3. Large pattern prior - use probability from pattern database
+    let pattern_prob = large_pattern_probability(parent_pos, pt);
+    if pattern_prob >= 0.0 {
+        let pattern_prior = pattern_prob as u32;
+        child.pv += pattern_prior * PRIOR_LARGEPATTERN;
+        child.pw += pattern_prior * PRIOR_LARGEPATTERN;
+    }
+
+    // 4. Capture prior - check if this move captures or saves stones
     let capture_moves = gen_capture_moves(parent_pos);
     for (mv, size) in capture_moves {
         if mv == pt {
@@ -160,14 +168,14 @@ fn apply_priors(child: &mut TreeNode, parent_pos: &Position, pt: Point, cfg_map:
         }
     }
 
-    // 4. Self-atari prior (negative) - penalize moves that put us in atari
+    // 5. Self-atari prior (negative) - penalize moves that put us in atari
     let atari_moves = fix_atari(&child.pos, pt, true);
     if !atari_moves.is_empty() {
         child.pv += PRIOR_SELFATARI;
         // pw stays at pw, giving a lower winrate
     }
 
-    // 5. Empty area prior - penalize moves on 1st/2nd line with no stones nearby
+    // 6. Empty area prior - penalize moves on 1st/2nd line with no stones nearby
     let height = line_height(pt);
     if height <= 2 && empty_area(parent_pos, pt, 3) {
         child.pv += PRIOR_EMPTYAREA;

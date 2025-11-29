@@ -4,14 +4,15 @@
 
 - [x] **`env4`/`env4d` arrays** - Encode neighbor colors (4 orthogonal + 4 diagonal) for fast pattern matching. These are updated incrementally when stones are placed/removed.
 
-- [ ] **Pattern tables (`pat3set`)** - 3x3 pattern matching infrastructure from `patterns.c`. Requires:
+- [x] **Pattern tables (`pat3set`)** - 3x3 pattern matching infrastructure from `patterns.c`. Implemented:
   - `make_pat3set()` - Initialize the pattern bitfield
   - `pat3_match()` - Fast pattern lookup using env4/env4d encoding
 
-- [ ] **Large patterns** - Full `patterns.c` functionality:
-  - `init_large_patterns()` - Load pattern probability tables
-  - `copy_to_large_board()` - Copy position to large board for pattern matching
+- [x] **Large patterns** - Full `patterns.c` functionality:
+  - `init_large_patterns()` - Initialize large pattern database
+  - `load_large_patterns()` - Load pattern probability tables from .prob and .spat files
   - `large_pattern_probability()` - Get move probability from pattern database
+  - Supports all 8 rotations/reflections of patterns
 
 ## Go Heuristics
 
@@ -33,7 +34,7 @@
 
 ## MCTS Enhancements
 
-- [ ] **Prior initialization** - When expanding nodes, set priors based on:
+- [x] **Prior initialization** - When expanding nodes, set priors based on:
   - Capture heuristics (`PRIOR_CAPTURE_ONE`, `PRIOR_CAPTURE_MANY`)
   - 3x3 pattern matches (`PRIOR_PAT3`)
   - Large pattern probabilities (`PRIOR_LARGEPATTERN`)
@@ -55,6 +56,6 @@
 ## Optional Enhancements
 
 - [x] **GTP protocol** - For integration with Go GUIs
-- [ ] **Zobrist hashing** - For position comparison and superko detection
+- [x] **Zobrist hashing** - For large pattern matching (used in `patterns.rs`)
 - [ ] **AMAF map in playouts** - Track which player played each point first
 - [ ] **Owner map** - Track territory ownership across simulations

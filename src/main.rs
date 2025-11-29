@@ -8,12 +8,16 @@
 //! - `michi-rust` - Show a demo
 //! - `michi-rust gtp` - Start GTP server for GUI integration
 //! - `michi-rust demo` - Run the MCTS demo
+//! - `michi-rust gtp --patterns michi-c` - Load patterns from michi-c folder
+
+use std::path::PathBuf;
 
 use clap::{Parser, Subcommand, ValueEnum};
 
 use michi_rust::board::{Board, Color};
 use michi_rust::gtp::GtpEngine;
 use michi_rust::mcts::TreeNode;
+use michi_rust::patterns::{load_large_patterns, load_large_patterns_from};
 use michi_rust::position::{str_coord, Position};
 
 /// Predefined intelligence levels
@@ -63,16 +67,27 @@ enum Commands {
         /// Predefined intelligence level (overrides --simulations if set)
         #[arg(short = 'l', long, value_enum)]
         level: Option<Level>,
+
+        /// Directory containing patterns.prob and patterns.spat files
+        #[arg(short = 'p', long)]
+        patterns: Option<PathBuf>,
     },
     /// Run a simple demo of the engine
-    Demo,
+    Demo {
+        /// Directory containing patterns.prob and patterns.spat files
+        #[arg(short = 'p', long)]
+        patterns: Option<PathBuf>,
+    },
 }
 
 fn main() {
     let cli = Cli::parse();
 
     match cli.command {
-        Some(Commands::Gtp { simulations, level }) => {
+        Some(Commands::Gtp { simulations, level, patterns }) => {
+            // Load patterns if specified
+            load_patterns_from_arg(&patterns);
+
             // Determine number of simulations
             let n_sims = if let Some(lvl) = level {
                 lvl.to_sims()
@@ -86,9 +101,33 @@ fn main() {
             let mut engine = GtpEngine::with_simulations(n_sims);
             engine.run();
         }
-        Some(Commands::Demo) | None => {
-            // Run demo
+        Some(Commands::Demo { patterns }) => {
+            load_patterns_from_arg(&patterns);
             run_demo();
+        }
+        None => {
+            // Try to auto-load patterns from common locations
+            let _ = load_large_patterns();
+            run_demo();
+        }
+    }
+}
+
+/// Load pattern files from the specified directory or try default locations.
+fn load_patterns_from_arg(patterns: &Option<PathBuf>) {
+    if let Some(dir) = patterns {
+        let prob_path = dir.join("patterns.prob");
+        let spat_path = dir.join("patterns.spat");
+
+        match load_large_patterns_from(&prob_path, &spat_path) {
+            Ok(n) => eprintln!("michi-rust: Loaded {} large patterns from {:?}", n, dir),
+            Err(e) => eprintln!("michi-rust: Warning: Could not load patterns: {}", e),
+        }
+    } else {
+        // Try default locations
+        match load_large_patterns() {
+            Ok(n) => eprintln!("michi-rust: Loaded {} large patterns", n),
+            Err(_) => eprintln!("michi-rust: Running without large patterns (use --patterns to specify)"),
         }
     }
 }
