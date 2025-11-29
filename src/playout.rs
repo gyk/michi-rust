@@ -212,9 +212,12 @@ fn try_move_with_self_atari_check(pos: &Position, pt: Point, is_random: bool) ->
 /// Choose a random legal move that is not a true eye.
 ///
 /// Uses random starting index for fairness, similar to the C implementation.
+/// Optimized with stack allocation to avoid heap overhead.
 fn choose_random_move(pos: &Position) -> Option<usize> {
-    // Collect candidate moves (empty points that are not true eyes)
-    let mut candidates = Vec::with_capacity(N * N);
+    // Collect candidate moves (empty points that aren't true eyes)
+    // Use stack array instead of Vec to avoid heap allocation in hot path
+    let mut candidates = [0; N * N];
+    let mut count = 0;
 
     // Start from a random index for better randomization
     let start = BOARD_IMIN + fastrand::usize(0..N * W);
@@ -222,23 +225,27 @@ fn choose_random_move(pos: &Position) -> Option<usize> {
     // Scan from start to end
     for pt in start..BOARD_IMAX {
         if pos.color[pt] == EMPTY && is_eye(pos, pt) != b'X' {
-            candidates.push(pt);
+            candidates[count] = pt;
+            count += 1;
         }
     }
     // Wrap around from beginning to start
     for pt in BOARD_IMIN..start {
         if pos.color[pt] == EMPTY && is_eye(pos, pt) != b'X' {
-            candidates.push(pt);
+            candidates[count] = pt;
+            count += 1;
         }
     }
 
-    if candidates.is_empty() {
+    if count == 0 {
         return None;
     }
 
-    // Fisher-Yates shuffle to ensure unbiased ordering of candidates
-    for i in 0..candidates.len() {
-        let j = i + fastrand::usize(0..candidates.len() - i);
+    // Shuffle and try moves until we find a legal one
+    // (some candidates might be suicide moves or self-atari)
+    for i in 0..count {
+        // Pick a random remaining candidate
+        let j = i + fastrand::usize(0..count - i);
         candidates.swap(i, j);
 
         let pt = candidates[i];
