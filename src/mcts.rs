@@ -3,16 +3,23 @@
 //! This module implements MCTS with:
 //! - UCB1-RAVE for node selection (combining UCB with All-Moves-As-First heuristic)
 //! - Progressive widening for tree expansion
+//! - Pattern-based priors for move prioritization
 //! - Simple random playouts for value estimation
 //!
 //! The search maintains a tree where each node represents a game position.
 //! The tree is expanded incrementally, and leaf nodes are evaluated using playouts.
 
 use crate::constants::{
-    BOARD_IMAX, BOARD_IMIN, BOARDSIZE, EXPAND_VISITS, PASS_MOVE, PRIOR_EVEN, RAVE_EQUIV,
+    BOARD_IMAX, BOARD_IMIN, BOARDSIZE, EXPAND_VISITS, N, PASS_MOVE, PRIOR_CFG,
+    PRIOR_CAPTURE_MANY, PRIOR_CAPTURE_ONE, PRIOR_EMPTYAREA, PRIOR_EVEN, PRIOR_PAT3,
+    PRIOR_SELFATARI, RAVE_EQUIV, W, EMPTY, OUT,
 };
+use crate::patterns::pat3_match;
 use crate::playout::mcplayout;
-use crate::position::{Position, is_eye, pass_move, play_move, str_coord};
+use crate::position::{
+    all_neighbors, fix_atari, gen_capture_moves, is_eye, pass_move, play_move, str_coord,
+    Point, Position,
+};
 
 /// A node in the MCTS search tree.
 ///
@@ -73,10 +80,23 @@ impl TreeNode {
 ///
 /// Each legal move becomes a child node. If no moves are available,
 /// a pass move is added.
+///
+/// Applies priors based on:
+/// - Capture moves (PRIOR_CAPTURE_ONE, PRIOR_CAPTURE_MANY)
+/// - 3x3 patterns (PRIOR_PAT3)
+/// - CFG distance from last move (PRIOR_CFG)
+/// - Self-atari detection (PRIOR_SELFATARI as negative prior)
 pub fn expand(node: &mut TreeNode) {
     if !node.children.is_empty() {
         return;
     }
+
+    // Compute CFG distances from last move
+    let cfg_map = if node.pos.last != PASS_MOVE {
+        Some(compute_cfg_distances(&node.pos, node.pos.last))
+    } else {
+        None
+    };
 
     // Generate all legal moves
     for pt in BOARD_IMIN..BOARD_IMAX {
@@ -90,7 +110,12 @@ pub fn expand(node: &mut TreeNode) {
 
         let mut child_pos = node.pos.clone();
         if play_move(&mut child_pos, pt).is_empty() {
-            node.children.push(TreeNode::new(&child_pos));
+            let mut child = TreeNode::new(&child_pos);
+
+            // Apply priors
+            apply_priors(&mut child, &node.pos, pt, &cfg_map);
+
+            node.children.push(child);
         }
     }
 
@@ -100,6 +125,129 @@ pub fn expand(node: &mut TreeNode) {
         pass_move(&mut child_pos);
         node.children.push(TreeNode::new(&child_pos));
     }
+}
+
+/// Apply priors to a child node based on various heuristics.
+fn apply_priors(child: &mut TreeNode, parent_pos: &Position, pt: Point, cfg_map: &Option<[i8; BOARDSIZE]>) {
+    // 1. CFG distance prior - moves near the last move get a bonus
+    if let Some(cfg) = cfg_map {
+        let dist = cfg[pt];
+        if dist >= 1 && (dist as usize) <= PRIOR_CFG.len() {
+            let bonus = PRIOR_CFG[(dist - 1) as usize];
+            child.pv += bonus;
+            child.pw += bonus;
+        }
+    }
+
+    // 2. 3x3 pattern prior
+    if pat3_match(parent_pos, pt) {
+        child.pv += PRIOR_PAT3;
+        child.pw += PRIOR_PAT3;
+    }
+
+    // 3. Capture prior - check if this move captures or saves stones
+    let capture_moves = gen_capture_moves(parent_pos);
+    for (mv, size) in capture_moves {
+        if mv == pt {
+            if size == 1 {
+                child.pv += PRIOR_CAPTURE_ONE;
+                child.pw += PRIOR_CAPTURE_ONE;
+            } else {
+                child.pv += PRIOR_CAPTURE_MANY;
+                child.pw += PRIOR_CAPTURE_MANY;
+            }
+            break;
+        }
+    }
+
+    // 4. Self-atari prior (negative) - penalize moves that put us in atari
+    let atari_moves = fix_atari(&child.pos, pt, true);
+    if !atari_moves.is_empty() {
+        child.pv += PRIOR_SELFATARI;
+        // pw stays at pw, giving a lower winrate
+    }
+
+    // 5. Empty area prior - penalize moves on 1st/2nd line with no stones nearby
+    let height = line_height(pt);
+    if height <= 2 && empty_area(parent_pos, pt, 3) {
+        child.pv += PRIOR_EMPTYAREA;
+        if height == 2 {
+            // 3rd line is OK in empty areas
+            child.pw += PRIOR_EMPTYAREA;
+        }
+        // 1st/2nd line in empty area gets no pw bonus (negative prior)
+    }
+}
+
+/// Compute CFG (Common Fate Graph) distances from a given point.
+///
+/// CFG distance is like Manhattan distance but groups of same-colored stones
+/// count as distance 0 from each other.
+fn compute_cfg_distances(pos: &Position, start: Point) -> [i8; BOARDSIZE] {
+    let mut cfg_map = [-1i8; BOARDSIZE];
+    let mut queue = Vec::with_capacity(BOARDSIZE);
+
+    cfg_map[start] = 0;
+    queue.push(start);
+    let mut head = 0;
+
+    while head < queue.len() {
+        let pt = queue[head];
+        head += 1;
+
+        for n in all_neighbors(pt) {
+            let c = pos.color[n];
+            if c == OUT {
+                continue;
+            }
+
+            let old_dist = cfg_map[n];
+            let new_dist = if c != EMPTY && c == pos.color[pt] {
+                // Same color stone - distance doesn't increase
+                cfg_map[pt]
+            } else {
+                cfg_map[pt] + 1
+            };
+
+            if old_dist < 0 || new_dist < old_dist {
+                cfg_map[n] = new_dist;
+                queue.push(n);
+            }
+        }
+    }
+
+    cfg_map
+}
+
+/// Return the line number (0-indexed) from nearest board edge.
+fn line_height(pt: Point) -> usize {
+    let row = pt / W;
+    let col = pt % W;
+
+    // Distance from edges
+    let row_dist = row.min(N + 1 - row);
+    let col_dist = col.min(N + 1 - col);
+
+    row_dist.min(col_dist).saturating_sub(1)
+}
+
+/// Check if there are no stones within Manhattan distance `dist` of point.
+fn empty_area(pos: &Position, pt: Point, dist: usize) -> bool {
+    if dist == 0 {
+        return true;
+    }
+
+    for n in all_neighbors(pt) {
+        let c = pos.color[n];
+        if c == b'X' || c == b'x' {
+            return false;
+        }
+        if c == EMPTY && dist > 1 && !empty_area(pos, n, dist - 1) {
+            return false;
+        }
+    }
+
+    true
 }
 
 /// Compute the RAVE-UCB urgency score for node selection.

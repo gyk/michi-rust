@@ -3,13 +3,20 @@
 //! This module implements random playouts for evaluating positions.
 //! A playout plays random legal moves until the game ends, then scores the result.
 //!
-//! TODO: Add heuristics from the C implementation:
-//! - Capture moves prioritization
+//! Heuristics used during playouts:
+//! - Capture moves prioritization (fix_atari)
 //! - 3x3 pattern matching
 //! - Self-atari rejection
 
-use crate::constants::{BOARD_IMAX, BOARD_IMIN, EMPTY, MAX_GAME_LEN, N, W};
-use crate::position::{is_eye, is_eyeish, pass_move, play_move, Position};
+use crate::constants::{
+    BOARD_IMAX, BOARD_IMIN, EMPTY, MAX_GAME_LEN, N, W,
+    PROB_HEURISTIC_CAPTURE, PROB_HEURISTIC_PAT3, PROB_SSAREJECT,
+    STONE_BLACK,
+};
+use crate::patterns::pat3_match;
+use crate::position::{
+    all_neighbors, fix_atari, is_eye, is_eyeish, pass_move, play_move, Point, Position,
+};
 
 /// Simple fast random number generator (32-bit Linear Congruential Generator).
 /// Same algorithm as michi-c for reproducibility.
@@ -39,9 +46,15 @@ fn random_int(n: u32) -> u32 {
     ((r * n as u64) >> 32) as u32
 }
 
+/// Generate a random float in [0, 1).
+#[inline]
+fn random_float() -> f64 {
+    (qdrandom() as f64) / (u32::MAX as f64)
+}
+
 /// Perform a Monte Carlo playout from the given position.
 ///
-/// Plays random legal moves until two consecutive passes or the game length limit.
+/// Plays moves using heuristics until two consecutive passes or the game length limit.
 /// Returns a score from the perspective of the player to move at the start:
 /// - Positive score = starting player wins
 /// - Negative score = starting player loses
@@ -50,7 +63,7 @@ pub fn mcplayout(pos: &mut Position) -> f64 {
     let mut passes = 0;
 
     while passes < 2 && pos.n < MAX_GAME_LEN {
-        if let Some(pt) = choose_random_move(pos) {
+        if let Some(pt) = choose_playout_move(pos) {
             play_move(pos, pt);
             passes = 0;
         } else {
@@ -66,6 +79,118 @@ pub fn mcplayout(pos: &mut Position) -> f64 {
     } else {
         s
     }
+}
+
+/// Choose a move for the playout using heuristics.
+///
+/// Tries moves in this order of preference:
+/// 1. Capture moves (atari responses)
+/// 2. 3x3 pattern moves
+/// 3. Random legal move
+///
+/// Also rejects self-atari moves with high probability.
+fn choose_playout_move(pos: &Position) -> Option<Point> {
+    // Get the neighborhood of the last two moves for focused heuristics
+    let neighbors = make_list_last_moves_neighbors(pos);
+
+    // 1. Try capture heuristics (with probability PROB_HEURISTIC_CAPTURE)
+    if random_float() < PROB_HEURISTIC_CAPTURE {
+        if let Some(mv) = try_capture_moves(pos, &neighbors) {
+            return Some(mv);
+        }
+    }
+
+    // 2. Try 3x3 pattern moves (with probability PROB_HEURISTIC_PAT3)
+    if random_float() < PROB_HEURISTIC_PAT3 {
+        if let Some(mv) = try_pattern_moves(pos, &neighbors) {
+            return Some(mv);
+        }
+    }
+
+    // 3. Fall back to random move
+    choose_random_move(pos)
+}
+
+/// Generate a list of points in the neighborhood of the last two moves.
+fn make_list_last_moves_neighbors(pos: &Position) -> Vec<Point> {
+    let mut points = Vec::with_capacity(20);
+
+    // Add last move and its neighbors
+    if pos.last != 0 {
+        points.push(pos.last);
+        for n in all_neighbors(pos.last) {
+            if pos.color[n] != b' ' && !points.contains(&n) {
+                points.push(n);
+            }
+        }
+    }
+
+    // Add last2 move and its neighbors
+    if pos.last2 != 0 {
+        if !points.contains(&pos.last2) {
+            points.push(pos.last2);
+        }
+        for n in all_neighbors(pos.last2) {
+            if pos.color[n] != b' ' && !points.contains(&n) {
+                points.push(n);
+            }
+        }
+    }
+
+    // Shuffle for randomization
+    let len = points.len();
+    for i in 0..len {
+        let j = i + random_int((len - i) as u32) as usize;
+        points.swap(i, j);
+    }
+
+    points
+}
+
+/// Try to find a capture move among the neighbor points.
+fn try_capture_moves(pos: &Position, neighbors: &[Point]) -> Option<Point> {
+    for &pt in neighbors {
+        if pos.color[pt] == STONE_BLACK || pos.color[pt] == b'x' {
+            let moves = fix_atari(pos, pt, false);
+            for mv in moves {
+                if try_move_with_self_atari_check(pos, mv) {
+                    return Some(mv);
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Try to find a 3x3 pattern move among the neighbor points.
+fn try_pattern_moves(pos: &Position, neighbors: &[Point]) -> Option<Point> {
+    for &pt in neighbors {
+        if pos.color[pt] == EMPTY && pat3_match(pos, pt) {
+            if try_move_with_self_atari_check(pos, pt) {
+                return Some(pt);
+            }
+        }
+    }
+    None
+}
+
+/// Check if a move is legal and not a self-atari (with probability-based rejection).
+fn try_move_with_self_atari_check(pos: &Position, pt: Point) -> bool {
+    let mut test_pos = pos.clone();
+    if !play_move(&mut test_pos, pt).is_empty() {
+        return false; // Illegal move
+    }
+
+    // Check for self-atari and reject with probability PROB_SSAREJECT
+    if random_float() < PROB_SSAREJECT {
+        let moves = fix_atari(&test_pos, pt, true);
+        if !moves.is_empty() {
+            // This move puts us in atari - reject it
+            return false;
+        }
+    }
+
+    true
 }
 
 /// Choose a random legal move that is not a true eye.
@@ -96,7 +221,7 @@ fn choose_random_move(pos: &Position) -> Option<usize> {
     }
 
     // Shuffle and try moves until we find a legal one
-    // (some candidates might be suicide moves)
+    // (some candidates might be suicide moves or self-atari)
     let n = candidates.len();
     for i in 0..n {
         // Pick a random remaining candidate
@@ -104,9 +229,8 @@ fn choose_random_move(pos: &Position) -> Option<usize> {
         candidates.swap(i, j);
 
         let pt = candidates[i];
-        // Test if move is legal by cloning position
-        let mut test_pos = pos.clone();
-        if play_move(&mut test_pos, pt).is_empty() {
+
+        if try_move_with_self_atari_check(pos, pt) {
             return Some(pt);
         }
     }

@@ -640,6 +640,195 @@ fn group_liberties(pos: &Position, start: Point) -> u32 {
     libs
 }
 
+// =============================================================================
+// Atari Detection and Capture Heuristics
+// =============================================================================
+
+/// Compute a block (group) of stones at a given point.
+///
+/// Returns the stones in the group and their liberties (up to `max_libs` liberties).
+/// This is similar to the C `compute_block` function.
+pub fn compute_block(
+    pos: &Position,
+    start: Point,
+    max_libs: usize,
+) -> (Vec<Point>, Vec<Point>) {
+    let color = pos.color[start];
+    let mut stones = Vec::new();
+    let mut libs = Vec::new();
+    let mut visited = [false; BOARDSIZE];
+    let mut lib_visited = [false; BOARDSIZE];
+    let mut stack = vec![start];
+    visited[start] = true;
+
+    while let Some(pt) = stack.pop() {
+        stones.push(pt);
+        for n in neighbors(pt) {
+            if visited[n] {
+                continue;
+            }
+            visited[n] = true;
+            if pos.color[n] == color {
+                stack.push(n);
+            } else if pos.color[n] == EMPTY && !lib_visited[n] {
+                lib_visited[n] = true;
+                libs.push(n);
+                if libs.len() >= max_libs {
+                    return (stones, libs);
+                }
+            }
+        }
+    }
+
+    (stones, libs)
+}
+
+/// Find neighbor blocks in atari (opponent blocks with only 1 liberty).
+///
+/// Given a list of stones, finds all opponent blocks adjacent to them that
+/// have exactly one liberty. Returns pairs of (representative stone, liberty).
+pub fn find_neighbor_blocks_in_atari(pos: &Position, stones: &[Point]) -> Vec<(Point, Point)> {
+    let color = pos.color[stones[0]];
+    let opponent = if color == STONE_BLACK { STONE_WHITE } else { STONE_BLACK };
+
+    let mut result = Vec::new();
+    let mut block_visited = [false; BOARDSIZE];
+
+    for &stone in stones {
+        for n in neighbors(stone) {
+            if pos.color[n] == opponent && !block_visited[n] {
+                let (block_stones, libs) = compute_block(pos, n, 2);
+                // Mark all stones in this block as visited
+                for &s in &block_stones {
+                    block_visited[s] = true;
+                }
+                // If exactly one liberty, it's in atari
+                if libs.len() == 1 {
+                    result.push((block_stones[0], libs[0]));
+                }
+            }
+        }
+    }
+
+    result
+}
+
+/// Check if a group is in atari and find moves that can save it or capture neighbors.
+///
+/// Returns a list of suggested moves. This is a simplified version of the C `fix_atari`.
+///
+/// Parameters:
+/// - `pos`: Current position
+/// - `pt`: A point in the group to check
+/// - `singlept_ok`: If true, don't try to save single-stone groups
+///
+/// Returns moves that can:
+/// - Capture opponent stones (if the group belongs to opponent)
+/// - Escape by playing on the last liberty
+/// - Counter-capture adjacent opponent groups in atari
+pub fn fix_atari(pos: &Position, pt: Point, singlept_ok: bool) -> Vec<Point> {
+    let mut moves = Vec::new();
+
+    // Compute the block
+    let (stones, libs) = compute_block(pos, pt, 3);
+
+    // If single stone and singlept_ok, don't bother
+    if singlept_ok && stones.len() == 1 {
+        return moves;
+    }
+
+    // If 2 or more liberties, not in atari
+    if libs.len() >= 2 {
+        return moves;
+    }
+
+    // Block is in atari (exactly 1 liberty)
+    let lib = libs[0];
+
+    if pos.color[pt] == STONE_WHITE {
+        // This is opponent's group - we can capture it!
+        moves.push(lib);
+        return moves;
+    }
+
+    // This is our group and it's in atari
+    // Try counter-capturing neighbor blocks first
+    let atari_neighbors = find_neighbor_blocks_in_atari(pos, &stones);
+    for (_, capture_lib) in atari_neighbors {
+        if !moves.contains(&capture_lib) {
+            moves.push(capture_lib);
+        }
+    }
+
+    // Try escaping by playing on our liberty
+    // First check if it would actually give us more liberties
+    let mut test_pos = pos.clone();
+    if play_move(&mut test_pos, lib).is_empty() {
+        let (_, new_libs) = compute_block(&test_pos, lib, 3);
+        if new_libs.len() >= 2 {
+            // Good, we escape
+            if !moves.contains(&lib) {
+                moves.push(lib);
+            }
+        }
+    }
+
+    moves
+}
+
+/// Generate capture moves in the neighborhood of recent moves.
+///
+/// Looks at groups near `last` and `last2` moves and finds:
+/// - Opponent groups in atari (can capture)
+/// - Own groups in atari (need to save)
+///
+/// Returns (move, group_size) pairs for prioritization.
+pub fn gen_capture_moves(pos: &Position) -> Vec<(Point, usize)> {
+    let mut moves = Vec::new();
+    let mut checked = [false; BOARDSIZE];
+
+    // Get neighbor points of last moves
+    let mut points_to_check = Vec::new();
+
+    if pos.last != 0 {
+        points_to_check.push(pos.last);
+        for n in all_neighbors(pos.last) {
+            if pos.color[n] != OUT {
+                points_to_check.push(n);
+            }
+        }
+    }
+
+    if pos.last2 != 0 {
+        for n in all_neighbors(pos.last2) {
+            if pos.color[n] != OUT && !points_to_check.contains(&n) {
+                points_to_check.push(n);
+            }
+        }
+    }
+
+    for pt in points_to_check {
+        if checked[pt] {
+            continue;
+        }
+
+        if pos.color[pt] == STONE_BLACK || pos.color[pt] == STONE_WHITE {
+            checked[pt] = true;
+            let atari_moves = fix_atari(pos, pt, false);
+
+            for m in atari_moves {
+                // Get the size of the group that would be affected
+                let (stones, _) = compute_block(pos, pt, 1);
+                if !moves.iter().any(|(mv, _)| *mv == m) {
+                    moves.push((m, stones.len()));
+                }
+            }
+        }
+    }
+
+    moves
+}
+
 /// Parse a coordinate string (e.g., "D4", "pass") into a Point.
 ///
 /// Go coordinates use letters A-T (skipping I) for columns and 1-19 for rows.
@@ -742,7 +931,7 @@ mod tests {
         // Move 1: Black plays A2 (becomes x after swap)
         play_move(&mut pos, parse_coord("A2"));
         // Move 2: White plays somewhere (becomes x, Black's A2 becomes X)
-        play_move(&mut pos, parse_coord("M13"));
+        play_move(&mut pos, parse_coord("H8")); // Valid on 9x9 board
         // Move 3: Black plays B1 (becomes x)
         play_move(&mut pos, parse_coord("B1"));
 
@@ -766,7 +955,7 @@ mod tests {
         let b2 = parse_coord("E3");
         let w2 = parse_coord("D4");
         let b3 = parse_coord("D2");
-        let w3 = parse_coord("M13"); // White plays elsewhere
+        let w3 = parse_coord("H8"); // White plays elsewhere (valid on 9x9 board)
         let b4 = parse_coord("C4"); // Now black can capture
         let _w4 = parse_coord("E4");
 
