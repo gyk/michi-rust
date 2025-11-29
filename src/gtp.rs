@@ -95,7 +95,7 @@ impl GtpEngine {
     /// Get the prompt indicator based on whose turn it is.
     /// Returns ○ for White to play, ● for Black to play.
     fn get_turn_indicator(&self) -> &'static str {
-        if self.pos.n % 2 == 0 {
+        if self.pos.is_black_to_play() {
             "●" // Black to play
         } else {
             "○" // White to play

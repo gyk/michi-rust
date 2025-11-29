@@ -48,8 +48,7 @@ pub fn mcplayout(pos: &mut Position, mut amaf_map: Option<&mut [i8]>) -> f64 {
             if let Some(ref mut amaf) = amaf_map {
                 if amaf[pt] == 0 {
                     // Mark with 1 for black, -1 for white
-                    // pos.n % 2 == 0 means it's Black's turn (move 0, 2, 4, ...)
-                    amaf[pt] = if pos.n % 2 == 0 { 1 } else { -1 };
+                    amaf[pt] = if pos.is_black_to_play() { 1 } else { -1 };
                 }
             }
             play_move(pos, pt);
@@ -269,7 +268,7 @@ fn choose_random_move(pos: &Position) -> Option<usize> {
 /// Returns a positive score if the current player ('X') is winning.
 fn score(pos: &Position) -> f64 {
     // Start with komi adjustment
-    let mut s = if pos.n % 2 == 0 {
+    let mut s = if pos.is_black_to_play() {
         -pos.komi as f64 // Black to play, komi counts against Black
     } else {
         pos.komi as f64 // White to play, komi counts for White

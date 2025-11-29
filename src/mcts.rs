@@ -344,7 +344,7 @@ fn tree_descend(tree: &mut TreeNode, amaf_map: &mut [i8]) -> Vec<usize> {
             passes = 0;
             if amaf_map[mv] == 0 {
                 // Mark with 1 for black, -1 for white
-                amaf_map[mv] = if node.pos.n % 2 == 0 { 1 } else { -1 };
+                amaf_map[mv] = if node.pos.is_black_to_play() { 1 } else { -1 };
             }
         }
 
@@ -382,7 +382,11 @@ fn tree_update(tree: &mut TreeNode, path: &[usize], amaf_map: &[i8], mut score: 
     }
 
     // Update AMAF for root's children
-    let amaf_value = if tree.pos.n % 2 == 0 { 1i8 } else { -1i8 };
+    let amaf_value = if tree.pos.is_black_to_play() {
+        1i8
+    } else {
+        -1i8
+    };
     for child in &mut tree.children {
         if child.pos.last != 0 && amaf_map[child.pos.last] == amaf_value {
             child.av += 1;
@@ -404,7 +408,11 @@ fn tree_update(tree: &mut TreeNode, path: &[usize], amaf_map: &[i8], mut score: 
         }
 
         // Update AMAF for this node's children
-        let amaf_value = if node.pos.n % 2 == 0 { 1i8 } else { -1i8 };
+        let amaf_value = if node.pos.is_black_to_play() {
+            1i8
+        } else {
+            -1i8
+        };
         for child in &mut node.children {
             if child.pos.last != 0 && amaf_map[child.pos.last] == amaf_value {
                 child.av += 1;
@@ -689,7 +697,7 @@ fn mcplayout_with_owner(
     // Update owner map based on final position
     // Positive for Black stones/territory, negative for White
     // n = 1 if Black to play, -1 if White to play (same as C version)
-    let n: i32 = if pos.n % 2 == 0 { 1 } else { -1 };
+    let n: i32 = if pos.is_black_to_play() { 1 } else { -1 };
 
     for pt in BOARD_IMIN..BOARD_IMAX {
         // For empty points, check if surrounded by one color (territory)

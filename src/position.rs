@@ -90,6 +90,14 @@ impl Position {
         empty_position(&mut p);
         p
     }
+
+    /// Returns true if it's Black's turn to play.
+    ///
+    /// Black plays on even move numbers (0, 2, 4, ...), White plays on odd move numbers.
+    #[inline]
+    pub fn is_black_to_play(&self) -> bool {
+        self.n % 2 == 0
+    }
 }
 
 // =============================================================================
@@ -148,7 +156,7 @@ pub fn compute_env4(pos: &Position, pt: Point, offset: usize) -> u8 {
             3 // OUT
         } else {
             // env4 uses absolute colors based on move number
-            if pos.n % 2 == 0 {
+            if pos.is_black_to_play() {
                 // BLACK to play (X=BLACK, x=WHITE)
                 if pos.color[n] == STONE_BLACK { 1 } else { 0 }
             } else {
@@ -191,7 +199,7 @@ pub fn put_stone(pos: &mut Position, pt: Point) {
     let w = W as isize;
     let n = N as isize;
 
-    if pos.n % 2 == 0 {
+    if pos.is_black_to_play() {
         // BLACK to play (X=BLACK)
         // EMPTY (0b10) -> BLACK (0b01): XOR with 0x11 for position 0, 0x22 for 1, etc.
         pos.env4[(pt + n_plus_1) as usize] ^= 0x11; // South neighbor
@@ -230,7 +238,7 @@ pub fn remove_stone(pos: &mut Position, pt: Point) {
     let w = W as isize;
     let n = N as isize;
 
-    if pos.n % 2 == 0 {
+    if pos.is_black_to_play() {
         // BLACK to play (x=WHITE)
         // WHITE (0b00) -> EMPTY (0b10): OR with 0x10 for position 0 to set high bit
         pos.env4[(pt + n_plus_1) as usize] |= 0x10;
@@ -1115,7 +1123,7 @@ pub fn format_position(pos: &Position) -> String {
     use std::fmt::Write;
 
     let mut output = String::with_capacity(512);
-    let black_to_play = pos.n % 2 == 0;
+    let black_to_play = pos.is_black_to_play();
 
     // Compute captures for display (internal tracking swaps after each move)
     let (cap_black, cap_white) = if black_to_play {
@@ -1209,7 +1217,7 @@ pub fn format_position_with_owner(
     use std::fmt::Write;
 
     let mut output = String::with_capacity(1024);
-    let black_to_play = pos.n % 2 == 0;
+    let black_to_play = pos.is_black_to_play();
 
     // Compute captures for display (internal tracking swaps after each move)
     let (cap_black, cap_white) = if black_to_play {
