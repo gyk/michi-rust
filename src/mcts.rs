@@ -358,6 +358,13 @@ fn tree_descend(tree: &mut TreeNode, amaf_map: &mut [i8]) -> Vec<usize> {
 /// Propagates the playout result back up the tree, updating visit and win counts.
 /// Also updates AMAF statistics for sibling moves that appeared in the playout.
 fn tree_update(tree: &mut TreeNode, path: &[usize], amaf_map: &[i8], mut score: f64) {
+    // Adjust score to be relative to the root player
+    // mcplayout returns score for the player at the leaf node.
+    // If the path length is odd, the leaf player is the opponent of the root player.
+    if path.len() % 2 != 0 {
+        score = -score;
+    }
+
     // Update root
     tree.v += 1;
     if score < 0.0 {
