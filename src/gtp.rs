@@ -28,17 +28,19 @@
 
 use std::io::{self, BufRead, Write};
 
-use crate::constants::{N, N_SIMS, PASS_MOVE, RESIGN_MOVE, RESIGN_THRES};
-use crate::mcts::{tree_search, TreeNode};
+use crate::constants::{BOARDSIZE, N, N_SIMS, PASS_MOVE, RESIGN_MOVE, RESIGN_THRES};
+use crate::mcts::{tree_search_with_display, TreeNode};
 use crate::position::{
-    empty_position, format_position, parse_coord, pass_move, play_move, Position, str_coord,
+    empty_position, format_position_with_owner, parse_coord, pass_move, play_move, Position, str_coord,
 };
 
 /// The list of known GTP commands.
 const KNOWN_COMMANDS: &[&str] = &[
     "boardsize",
     "clear_board",
+    "cputime",
     "genmove",
+    "help",
     "known_command",
     "komi",
     "list_commands",
@@ -58,6 +60,10 @@ pub struct GtpEngine {
     tree: Option<TreeNode>,
     /// Number of simulations for MCTS search
     n_sims: usize,
+    /// Owner map for territory display
+    owner_map: Vec<i32>,
+    /// Start time for cputime command
+    start_time: std::time::Instant,
 }
 
 impl Default for GtpEngine {
@@ -80,6 +86,24 @@ impl GtpEngine {
             pos,
             tree,
             n_sims,
+            owner_map: vec![0i32; BOARDSIZE],
+            start_time: std::time::Instant::now(),
+        }
+    }
+
+    /// Print the board state to stderr with owner map.
+    fn print_board(&self) {
+        let board_str = format_position_with_owner(&self.pos, Some(&self.owner_map), self.n_sims);
+        eprint!("{}", board_str);
+    }
+
+    /// Get the prompt indicator based on whose turn it is.
+    /// Returns ○ for White to play, ● for Black to play.
+    fn get_turn_indicator(&self) -> &'static str {
+        if self.pos.n % 2 == 0 {
+            "●" // Black to play
+        } else {
+            "○" // White to play
         }
     }
 
@@ -87,6 +111,7 @@ impl GtpEngine {
     pub fn run(&mut self) {
         let stdin = io::stdin();
         let mut stdout = io::stdout();
+        let mut stderr = io::stderr();
 
         for line in stdin.lock().lines() {
             let line = match line {
@@ -115,13 +140,21 @@ impl GtpEngine {
             // Execute command
             let response = self.execute(&command, args);
 
+            // Print board after command execution (to stderr, like michi-c)
+            self.print_board();
+            stderr.flush().unwrap();
+
             // Format and send response
             let (success, message) = response;
             let prefix = if success { '=' } else { '?' };
             let id_str = id.map(|i| i.to_string()).unwrap_or_default();
 
-            writeln!(stdout, "\n{prefix}{id_str} {message}\n").unwrap();
+            writeln!(stdout, "{prefix}{id_str} {message}\n").unwrap();
             stdout.flush().unwrap();
+
+            // Print turn indicator prompt to stderr
+            write!(stderr, "{} michi-rust> ", self.get_turn_indicator()).unwrap();
+            stderr.flush().unwrap();
 
             // Quit if requested
             if command == "quit" {
@@ -194,6 +227,7 @@ impl GtpEngine {
             "clear_board" => {
                 empty_position(&mut self.pos);
                 self.tree = Some(TreeNode::new(&self.pos));
+                self.owner_map.iter_mut().for_each(|x| *x = 0);
                 (true, String::new())
             }
 
@@ -255,9 +289,11 @@ impl GtpEngine {
                     return (true, "pass".to_string());
                 }
 
-                // Create fresh tree for search
+                // Create fresh tree for search with display
                 let mut tree = TreeNode::new(&self.pos);
-                let pt = tree_search(&mut tree, self.n_sims);
+                // Clear owner map before search
+                self.owner_map.iter_mut().for_each(|x| *x = 0);
+                let pt = tree_search_with_display(&mut tree, self.n_sims, &mut self.owner_map);
 
                 // Check for resignation
                 let winrate = tree
@@ -283,9 +319,19 @@ impl GtpEngine {
 
             "showboard" => {
                 // Output the board to stderr (GTP debug output) and return empty success
-                let board_str = format_position(&self.pos);
+                let board_str = format_position_with_owner(&self.pos, Some(&self.owner_map), self.n_sims);
                 eprint!("{}", board_str);
                 (true, format!("\n{}", board_str.trim_end()))
+            }
+
+            "cputime" => {
+                let elapsed = self.start_time.elapsed().as_secs_f64();
+                (true, format!("{:.3}", elapsed))
+            }
+
+            "help" => {
+                let commands = KNOWN_COMMANDS.join("\n");
+                (true, commands)
             }
 
             _ => (false, format!("unknown command: {command}")),

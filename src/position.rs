@@ -1186,6 +1186,112 @@ pub fn print_pos(pos: &Position) {
     eprint!("{}", format_position(pos));
 }
 
+/// Format position with owner map (territory estimation).
+///
+/// This produces a visualization matching michi-c's `print_pos` with owner_map.
+/// The owner map shows territory estimation from MCTS simulations:
+/// - 'X' = strongly Black territory (>60% Black)
+/// - 'x' = weakly Black territory (>30% Black)
+/// - 'O' = strongly White territory (>60% White)
+/// - 'o' = weakly White territory (>30% White)
+/// - '.' = contested
+///
+/// The owner_map values are cumulative: positive = Black, negative = White.
+/// The threshold is based on N_SIMS.
+pub fn format_position_with_owner(pos: &Position, owner_map: Option<&[i32]>, n_sims: usize) -> String {
+    use std::fmt::Write;
+
+    let mut output = String::with_capacity(1024);
+    let black_to_play = pos.n % 2 == 0;
+
+    // Compute captures for display (internal tracking swaps after each move)
+    let (cap_black, cap_white) = if black_to_play {
+        (pos.cap_x, pos.cap)
+    } else {
+        (pos.cap, pos.cap_x)
+    };
+
+    // Header line with move number, captures, and komi
+    write!(
+        output,
+        "Move: {:<3}   Black: {} caps   White: {} caps   Komi: {:.1}",
+        pos.n, cap_black, cap_white, pos.komi
+    )
+    .unwrap();
+
+    // Ko point (if any)
+    if pos.ko != 0 {
+        write!(output, "   ko: {}", str_coord(pos.ko)).unwrap();
+    }
+    output.push('\n');
+
+    // Board rows (from top to bottom: row N down to row 1)
+    for row in 1..=N {
+        let row_label = N - row + 1;
+        // Add row number with proper spacing
+        write!(output, " {:>2} ", row_label).unwrap();
+
+        for col in 1..=N {
+            let k = row * (N + 1) + col;
+            let c = display_color(pos.color[k], black_to_play);
+
+            // Check if this is the last move (mark with parentheses)
+            let prev = if col > 1 { row * (N + 1) + col - 1 } else { 0 };
+
+            // Opening paren before the stone
+            if pos.last != 0 && pos.last == k {
+                output.push('(');
+            } else if pos.last != 0 && pos.last == prev {
+                output.push(')');
+            } else {
+                output.push(' ');
+            }
+
+            output.push(c);
+        }
+
+        // Closing paren after last stone if it's at the end of the row
+        if pos.last != 0 && pos.last == row * (N + 1) + N {
+            output.push(')');
+        }
+
+        // Owner map column (if provided)
+        if let Some(omap) = owner_map {
+            output.push_str("     ");
+            for col in 1..=N {
+                let k = row * (N + 1) + col;
+                let val = omap[k] as f64;
+                let n = n_sims as f64;
+                let c = if val > 0.6 * n {
+                    'X'
+                } else if val > 0.3 * n {
+                    'x'
+                } else if val < -0.6 * n {
+                    'O'
+                } else if val < -0.3 * n {
+                    'o'
+                } else {
+                    '.'
+                };
+                output.push(' ');
+                output.push(c);
+            }
+        }
+
+        output.push('\n');
+    }
+
+    // Column labels
+    output.push_str("    ");
+    for col in 0..N {
+        output.push(' ');
+        output.push(COL_LABELS[col] as char);
+    }
+    output.push_str(" \n\n");
+
+    output
+}
+
 impl std::fmt::Display for Position {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", format_position(self))

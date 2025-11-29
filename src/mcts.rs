@@ -491,3 +491,212 @@ pub fn dump_children(root: &TreeNode) {
         );
     }
 }
+
+/// RAVE urgency score for display purposes (same as internal rave_urgency).
+fn rave_urgency_display(node: &TreeNode) -> f64 {
+    rave_urgency(node)
+}
+
+/// Dump a subtree for display.
+///
+/// Prints this node and all its children with v >= thres.
+/// If recurse is true, also prints grandchildren.
+pub fn dump_subtree(node: &TreeNode, thres: u32, indent: &str, recurse: bool) {
+    let move_str = str_coord(node.pos.last);
+    let winrate_str = if node.v > 0 {
+        format!("{:.3}", node.winrate())
+    } else {
+        "nan".to_string()
+    };
+    let rave_winrate_str = if node.av > 0 {
+        format!("{:.3}", node.aw as f64 / node.av as f64)
+    } else {
+        " nan".to_string()
+    };
+
+    eprintln!(
+        "{}+- {} {} ({:>6}/{:<6}, prior {:>3}/{:<3}, rave {:>6}/{:<6}={:>5}, urgency {:.3})",
+        indent,
+        move_str,
+        winrate_str,
+        node.w,
+        node.v,
+        node.pw,
+        node.pv,
+        node.aw,
+        node.av,
+        rave_winrate_str,
+        rave_urgency_display(node)
+    );
+
+    if recurse {
+        let new_indent = format!("{}   ", indent);
+        for child in &node.children {
+            if child.v >= thres {
+                dump_subtree(child, thres, &new_indent, false);
+            }
+        }
+    }
+}
+
+/// Get the N best moves from a tree (by visit count).
+fn get_best_moves(tree: &TreeNode, n: usize) -> Vec<&TreeNode> {
+    let mut children: Vec<&TreeNode> = tree.children.iter().collect();
+    children.sort_by(|a, b| b.v.cmp(&a.v));
+    children.into_iter().take(n).collect()
+}
+
+/// Print a summary of the search progress.
+///
+/// Shows current simulation count, best winrate, best sequence, and candidate moves.
+pub fn print_tree_summary(tree: &TreeNode, sims: usize) {
+    // Get 5 best candidate moves
+    let best_nodes = get_best_moves(tree, 5);
+    if best_nodes.is_empty() {
+        return;
+    }
+
+    // Format candidate moves with winrates
+    let mut can = String::new();
+    for node in &best_nodes {
+        let move_str = str_coord(node.pos.last);
+        let wr_str = if node.v > 0 {
+            format!("{:.3}", node.winrate())
+        } else {
+            "nan".to_string()
+        };
+        if !can.is_empty() {
+            can.push(' ');
+        }
+        can.push_str(&format!("{}({})", move_str, wr_str));
+    }
+
+    // Get best sequence (up to 5 moves deep)
+    let mut best_seq = String::new();
+    let mut node = tree;
+    for _ in 0..5 {
+        let best = get_best_moves(node, 1);
+        if best.is_empty() {
+            break;
+        }
+        let best_child = best[0];
+        if !best_seq.is_empty() {
+            best_seq.push(' ');
+        }
+        best_seq.push_str(&str_coord(best_child.pos.last));
+        // Find this child in the tree to continue
+        if let Some(child) = node.children.iter().find(|c| c.pos.last == best_child.pos.last) {
+            node = child;
+        } else {
+            break;
+        }
+    }
+
+    let best_wr = best_nodes[0].winrate();
+    eprintln!(
+        "[{:>4}] winrate {:.3} | seq {}| can {}",
+        sims, best_wr, best_seq, can
+    );
+}
+
+/// Run MCTS search with display and owner map tracking.
+///
+/// This is the enhanced version that:
+/// - Tracks territory ownership for display
+/// - Prints progress every REPORT_PERIOD simulations
+/// - Dumps subtree before returning
+pub fn tree_search_with_display(
+    root: &mut TreeNode,
+    sims: usize,
+    owner_map: &mut [i32],
+) -> usize {
+    use crate::constants::{FASTPLAY5_THRES, FASTPLAY20_THRES, REPORT_PERIOD};
+
+    // Initialize root if necessary
+    if root.children.is_empty() {
+        expand(root);
+    }
+
+    // Clear owner map
+    owner_map.iter_mut().for_each(|x| *x = 0);
+
+    let mut actual_sims = 0;
+    for i in 0..sims {
+        actual_sims = i + 1;
+        let mut amaf_map = vec![0i8; BOARDSIZE];
+
+        // Print progress periodically
+        if i > 0 && i % REPORT_PERIOD == 0 {
+            print_tree_summary(root, i);
+        }
+
+        // Descend to a leaf
+        let path = tree_descend(root, &mut amaf_map);
+
+        // Get position at the leaf and run a playout
+        let mut pos = get_leaf_position(root, &path);
+        let score = mcplayout_with_owner(&mut pos, Some(&mut amaf_map), owner_map);
+
+        // Update tree with the result
+        tree_update(root, &path, &amaf_map, score);
+
+        // Early stop test (same as michi-c)
+        let best_wr = root
+            .children
+            .iter()
+            .filter(|c| c.v > 0)
+            .map(|c| c.winrate())
+            .fold(0.0_f64, f64::max);
+
+        if (i > sims / 20 && best_wr > FASTPLAY5_THRES)
+            || (i > sims / 5 && best_wr > FASTPLAY20_THRES)
+        {
+            break;
+        }
+    }
+
+    // Dump subtree before returning (threshold = N_SIMS/50)
+    let thres = (sims / 50) as u32;
+    dump_subtree(root, thres, "", true);
+    print_tree_summary(root, actual_sims);
+
+    // Return the best move (most visited child)
+    best_move(root)
+}
+
+/// Perform a Monte Carlo playout and update owner map.
+///
+/// This is like mcplayout but also tracks territory ownership.
+fn mcplayout_with_owner(
+    pos: &mut Position,
+    amaf_map: Option<&mut [i8]>,
+    owner_map: &mut [i32],
+) -> f64 {
+    let score = mcplayout(pos, amaf_map);
+
+    // Update owner map based on final position
+    // Positive for Black stones/territory, negative for White
+    for pt in BOARD_IMIN..BOARD_IMAX {
+        let c = pos.color[pt];
+        if c == b'X' || c == b'x' {
+            // Stone on the board - determine color
+            // After playout, 'X' is the player to move at end, 'x' is opponent
+            // We need to know who was Black originally
+            // pos.n tells us how many moves were played
+            // If pos.n is even, Black is to play (so 'X' = Black)
+            // If pos.n is odd, White is to play (so 'X' = White)
+            let is_black = if pos.n % 2 == 0 {
+                c == b'X'
+            } else {
+                c == b'x'
+            };
+            if is_black {
+                owner_map[pt] += 1;
+            } else {
+                owner_map[pt] -= 1;
+            }
+        }
+    }
+
+    score
+}
