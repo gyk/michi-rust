@@ -931,7 +931,7 @@ mod tests {
         // Move 1: Black plays A2 (becomes x after swap)
         play_move(&mut pos, parse_coord("A2"));
         // Move 2: White plays somewhere (becomes x, Black's A2 becomes X)
-        play_move(&mut pos, parse_coord("H8")); // Valid on 9x9 board
+        play_move(&mut pos, parse_coord("E5")); // Valid on both 9x9 and 13x13
         // Move 3: Black plays B1 (becomes x)
         play_move(&mut pos, parse_coord("B1"));
 
@@ -955,7 +955,7 @@ mod tests {
         let b2 = parse_coord("E3");
         let w2 = parse_coord("D4");
         let b3 = parse_coord("D2");
-        let w3 = parse_coord("H8"); // White plays elsewhere (valid on 9x9 board)
+        let w3 = parse_coord("E5"); // White plays elsewhere (valid on both 9x9 and 13x13)
         let b4 = parse_coord("C4"); // Now black can capture
         let _w4 = parse_coord("E4");
 

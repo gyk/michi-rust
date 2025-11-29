@@ -54,26 +54,65 @@ fn setpos(black_moves: &[&str], white_moves: &[&str]) -> Position {
 // Coordinate parsing and string conversion tests
 // =============================================================================
 
+use michi_rust::constants::N;
+
+/// Get the far corner coordinate string based on board size.
+/// Returns "J9" for 9x9 and "N13" for 13x13.
+fn far_corner() -> &'static str {
+    if N == 9 { "J9" } else { "N13" }
+}
+
+/// Get a coordinate at the maximum row for the board size.
+/// Returns "A9" for 9x9 and "A13" for 13x13.
+fn top_corner() -> &'static str {
+    if N == 9 { "A9" } else { "A13" }
+}
+
+/// Get the maximum column at row 1.
+/// Returns "J1" for 9x9 and "N1" for 13x13.
+fn right_corner() -> &'static str {
+    if N == 9 { "J1" } else { "N1" }
+}
+
+/// Get a "far away" coordinate for when we need to play elsewhere.
+/// These coordinates are in the far corner to avoid conflicts with test moves.
+/// Returns "H8" for 9x9 and "M12" for 13x13.
+fn elsewhere() -> &'static str {
+    if N == 9 { "H8" } else { "M12" }
+}
+
+/// Get another "far away" coordinate.
+/// Returns "H9" for 9x9 and "L12" for 13x13.
+fn elsewhere2() -> &'static str {
+    if N == 9 { "H9" } else { "L12" }
+}
+
+/// Get another "far away" coordinate.
+/// Returns "J8" for 9x9 and "K11" for 13x13.
+fn elsewhere3() -> &'static str {
+    if N == 9 { "J8" } else { "K11" }
+}
+
 #[test]
 fn test_parse_coord_corners() {
     let pos = Position::new();
 
-    // Test corners
+    // Test corners - use board-size-appropriate coordinates
     let a1 = parse_coord("A1");
-    let a13 = parse_coord("A13");
-    let n1 = parse_coord("N1");
-    let n13 = parse_coord("N13");
+    let top = parse_coord(top_corner());
+    let right = parse_coord(right_corner());
+    let far = parse_coord(far_corner());
 
     // Verify they are valid empty points
     assert_eq!(pos.color[a1], b'.', "A1 should be empty");
-    assert_eq!(pos.color[a13], b'.', "A13 should be empty");
-    assert_eq!(pos.color[n1], b'.', "N1 should be empty");
-    assert_eq!(pos.color[n13], b'.', "N13 should be empty");
+    assert_eq!(pos.color[top], b'.', "{} should be empty", top_corner());
+    assert_eq!(pos.color[right], b'.', "{} should be empty", right_corner());
+    assert_eq!(pos.color[far], b'.', "{} should be empty", far_corner());
 
     // Verify they are all different
-    assert_ne!(a1, a13);
-    assert_ne!(a1, n1);
-    assert_ne!(a1, n13);
+    assert_ne!(a1, top);
+    assert_ne!(a1, right);
+    assert_ne!(a1, far);
 }
 
 #[test]
@@ -88,9 +127,18 @@ fn test_parse_coord_skips_i() {
 
 #[test]
 fn test_str_coord_roundtrip() {
-    let test_coords = ["A1", "D4", "G7", "L10", "N13", "H5", "J5"];
+    // Use coordinates valid on both 9x9 and 13x13
+    let test_coords = ["A1", "D4", "G7", "H5", "J5"];
 
     for &coord in &test_coords {
+        let pt = parse_coord(coord);
+        let s = str_coord(pt);
+        let pt2 = parse_coord(&s);
+        assert_eq!(pt, pt2, "Roundtrip failed for {}", coord);
+    }
+
+    // Also test the far corners for the current board size
+    for &coord in &[far_corner(), top_corner(), right_corner()] {
         let pt = parse_coord(coord);
         let s = str_coord(pt);
         let pt2 = parse_coord(&s);
@@ -122,9 +170,10 @@ fn test_empty_position() {
     assert_eq!(pos.cap_x, 0, "Opponent captures should be 0");
 
     // Check that all board points are empty
-    for row in 1..=13 {
-        for col in 1..=13 {
-            let pt = row * 14 + col;
+    let w = N + 1; // Width including padding
+    for row in 1..=N {
+        for col in 1..=N {
+            let pt = row * w + col;
             assert_eq!(
                 pos.color[pt], b'.',
                 "Point at row {} col {} should be empty",
@@ -154,7 +203,7 @@ fn test_play_single_stone() {
 fn test_play_two_stones() {
     let mut pos = Position::new();
     let b1 = parse_coord("D4");
-    let w1 = parse_coord("K10"); // Use valid 13x13 coordinate
+    let w1 = parse_coord(elsewhere()); // Use board-size-appropriate coordinate
 
     play_move(&mut pos, b1);
     assert_eq!(pos.n, 1);
@@ -209,11 +258,11 @@ fn test_capture_single_stone() {
     // Black plays E4
     play_move(&mut pos, parse_coord("E4"));
     // White plays elsewhere
-    play_move(&mut pos, parse_coord("M13"));
+    play_move(&mut pos, parse_coord(elsewhere()));
     // Black plays D3
     play_move(&mut pos, parse_coord("D3"));
     // White plays elsewhere
-    play_move(&mut pos, parse_coord("L12"));
+    play_move(&mut pos, parse_coord(elsewhere2()));
     // Black plays D5 - captures!
     let result = play_move(&mut pos, parse_coord("D5"));
 
@@ -235,7 +284,7 @@ fn test_capture_corner() {
 
     // Black surrounds
     play_move(&mut pos, parse_coord("A2"));
-    play_move(&mut pos, parse_coord("M13")); // White elsewhere
+    play_move(&mut pos, parse_coord(elsewhere())); // White elsewhere
     let result = play_move(&mut pos, parse_coord("B1")); // Black captures
 
     assert!(result.is_empty(), "Capture move should be legal");
@@ -257,11 +306,11 @@ fn test_capture_group() {
     play_move(&mut pos, parse_coord("C5")); // B
     play_move(&mut pos, parse_coord("D5")); // W
     play_move(&mut pos, parse_coord("E4")); // B
-    play_move(&mut pos, parse_coord("M13")); // W elsewhere
+    play_move(&mut pos, parse_coord(elsewhere())); // W elsewhere
     play_move(&mut pos, parse_coord("E5")); // B
-    play_move(&mut pos, parse_coord("L12")); // W elsewhere
+    play_move(&mut pos, parse_coord(elsewhere2())); // W elsewhere
     play_move(&mut pos, parse_coord("D3")); // B
-    play_move(&mut pos, parse_coord("K11")); // W elsewhere
+    play_move(&mut pos, parse_coord(elsewhere3())); // W elsewhere
     // Final capture move
     let result = play_move(&mut pos, parse_coord("D6"));
 
@@ -289,7 +338,7 @@ fn test_suicide_single_stone() {
 
     // Setup: Black stones at A2, B1, try White at A1
     play_move(&mut pos, parse_coord("A2")); // B
-    play_move(&mut pos, parse_coord("M13")); // W elsewhere
+    play_move(&mut pos, parse_coord(elsewhere())); // W elsewhere
     play_move(&mut pos, parse_coord("B1")); // B
 
     // Now it's White's turn, A1 would be suicide
@@ -310,7 +359,7 @@ fn test_non_suicide_capture() {
     // Playing Black at A1 captures a stone, so it's not suicide
     play_move(&mut pos, parse_coord("B1")); // B
     play_move(&mut pos, parse_coord("A2")); // W
-    play_move(&mut pos, parse_coord("M13")); // B elsewhere
+    play_move(&mut pos, parse_coord(elsewhere())); // B elsewhere
     play_move(&mut pos, parse_coord("B2")); // W
 
     // Black plays A1 - looks like suicide but captures White at A2
@@ -348,11 +397,11 @@ fn test_simple_ko() {
     play_move(&mut pos, parse_coord("B1")); // B
     play_move(&mut pos, parse_coord("C2")); // W - somewhere to pass turn
     play_move(&mut pos, parse_coord("B3")); // B
-    play_move(&mut pos, parse_coord("L10")); // W - elsewhere
+    play_move(&mut pos, parse_coord(elsewhere())); // W - elsewhere
     play_move(&mut pos, parse_coord("C1")); // B
-    play_move(&mut pos, parse_coord("L11")); // W - elsewhere
+    play_move(&mut pos, parse_coord(elsewhere2())); // W - elsewhere
     play_move(&mut pos, parse_coord("C3")); // B
-    play_move(&mut pos, parse_coord("L12")); // W - elsewhere
+    play_move(&mut pos, parse_coord(elsewhere3())); // W - elsewhere
     play_move(&mut pos, parse_coord("D2")); // B
 
     // Now the pattern is set up, W at B2 and C2, B surrounds
@@ -391,7 +440,7 @@ fn test_is_eyeish_corner() {
 
     // Black stones at A2 and B1
     play_move(&mut pos, parse_coord("A2")); // B
-    play_move(&mut pos, parse_coord("M13")); // W elsewhere
+    play_move(&mut pos, parse_coord(elsewhere())); // W
     play_move(&mut pos, parse_coord("B1")); // B
 
     // A1 should be eyeish for Black (but colors are swapped now)
@@ -427,9 +476,9 @@ fn test_is_eye_true_eye() {
 
     // Black stones at A2, B2, B1 - A1 is a true eye
     play_move(&mut pos, parse_coord("A2")); // B
-    play_move(&mut pos, parse_coord("M13")); // W
+    play_move(&mut pos, parse_coord(elsewhere())); // W
     play_move(&mut pos, parse_coord("B1")); // B
-    play_move(&mut pos, parse_coord("L12")); // W
+    play_move(&mut pos, parse_coord(elsewhere2())); // W
     play_move(&mut pos, parse_coord("B2")); // B
 
     // Now A1 should be a true eye for Black
@@ -474,9 +523,11 @@ fn test_tree_expand() {
         "Expanded node should have children"
     );
 
-    // On an empty 13x13 board, there should be many legal moves
+    // On an empty board, there should be many legal moves
+    // 9x9 has 81 points, 13x13 has 169 points
+    let min_moves = if N == 9 { 50 } else { 100 };
     assert!(
-        node.children.len() > 100,
+        node.children.len() > min_moves,
         "Should have many legal moves, got {}",
         node.children.len()
     );
@@ -485,6 +536,7 @@ fn test_tree_expand() {
 #[test]
 fn test_tree_search_basic() {
     use michi_rust::mcts::{TreeNode, tree_search};
+    use michi_rust::constants::BOARDSIZE;
 
     let pos = Position::new();
     let mut root = TreeNode::new(&pos);
@@ -493,7 +545,7 @@ fn test_tree_search_basic() {
     let best_move = tree_search(&mut root, 10);
 
     // Should return a valid move or pass
-    assert!(best_move < 200, "Move should be a valid board index");
+    assert!(best_move < BOARDSIZE, "Move should be a valid board index");
 }
 
 // =============================================================================
@@ -607,7 +659,8 @@ fn test_score_empty_board() {
 fn test_board_size() {
     use michi_rust::constants::{BOARDSIZE, N};
 
-    assert_eq!(N, 13, "Board size should be 13x13");
+    // Board size should be 9 or 13 depending on feature
+    assert!(N == 9 || N == 13, "Board size should be 9x9 or 13x13, got {}", N);
     assert!(BOARDSIZE > N * N, "BOARDSIZE includes padding");
 }
 
@@ -617,14 +670,15 @@ fn test_board_boundaries() {
 
     // Check that boundaries are marked as OUT (' ')
     // First row (index 0 to N) should be OUT
-    for i in 0..=13 {
+    for i in 0..=N {
         assert_eq!(pos.color[i], b' ', "Top boundary should be OUT at {}", i);
     }
 
     // Check left edge
-    for row in 1..=13 {
+    let w = N + 1; // Width including padding
+    for row in 1..=N {
         assert_eq!(
-            pos.color[row * 14],
+            pos.color[row * w],
             b' ',
             "Left boundary should be OUT at row {}",
             row

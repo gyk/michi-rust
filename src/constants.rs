@@ -2,13 +2,36 @@
 //!
 //! This module contains all the configuration constants for the Go engine.
 //! The board uses a 1D array representation with padding for boundary detection.
+//!
+//! # Board Size Configuration
+//!
+//! The board size is controlled by Cargo features:
+//! - `board9x9` (default): 9x9 board
+//! - `board13x13`: 13x13 board
+//!
+//! To compile for a specific board size:
+//! ```sh
+//! cargo build                           # 9x9 (default)
+//! cargo build --no-default-features --features board13x13  # 13x13
+//! ```
 
 // =============================================================================
 // Board Geometry
 // =============================================================================
 
 /// Board size (NxN). Standard Go sizes are 9, 13, or 19.
+#[cfg(feature = "board9x9")]
 pub const N: usize = 9;
+
+#[cfg(feature = "board13x13")]
+pub const N: usize = 13;
+
+// Compile-time check: exactly one board size feature must be enabled
+#[cfg(all(feature = "board9x9", feature = "board13x13"))]
+compile_error!("Cannot enable both 'board9x9' and 'board13x13' features at the same time");
+
+#[cfg(not(any(feature = "board9x9", feature = "board13x13")))]
+compile_error!("Must enable exactly one board size feature: 'board9x9' or 'board13x13'");
 
 /// Board width including left padding (N + 2 for padding on both sides).
 pub const W: usize = N + 2;
