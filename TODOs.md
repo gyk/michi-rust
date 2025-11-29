@@ -59,3 +59,254 @@
 - [x] **Zobrist hashing** - For large pattern matching (used in `patterns.rs`)
 - [ ] **AMAF map in playouts** - Track which player played each point first
 - [ ] **Owner map** - Track territory ownership across simulations
+
+---
+
+# Bug Analysis: Why michi-rust is Weaker than michi-c
+
+*Analysis performed on 2025-11-29*
+
+This section documents the critical differences between michi-rust and michi-c that cause
+michi-rust to play significantly weaker, even when michi-c has no pattern files loaded.
+
+## 🔴 Critical Issues
+
+### 1. Playout doesn't update AMAF map (`playout.rs`)
+
+**Location:** `src/playout.rs` - `mcplayout()` function
+
+**C version:**
+```c
+double mcplayout(Position *pos, int amaf_map[], int owner_map[], int disp)
+{
+    // ...
+    if (amaf_map[move] == 0)
+        amaf_map[move] = ((pos->n-1)%2==0 ? 1 : -1);
+    // ...
+}
+```
+
+**Rust version:**
+```rust
+pub fn mcplayout(pos: &mut Position) -> f64 {
+    // No amaf_map parameter, no updates!
+}
+```
+
+**Impact:** The RAVE (Rapid Action Value Estimation) heuristic only tracks moves made during
+tree descent, completely missing all moves made during the playout phase. This is a **massive
+information loss** that significantly weakens the RAVE heuristic's effectiveness.
+
+**Fix Required:** Change `mcplayout()` to accept `&mut [i8]` for amaf_map and update it when
+moves are played.
+
+---
+
+### 2. Missing ladder attack detection (`position.rs`)
+
+**Location:** `src/position.rs` - `fix_atari()` function
+
+**C version has `read_ladder_attack()`:**
+```c
+Point read_ladder_attack(Position *pos, Point pt, Slist libs)
+// Check if a capturable ladder is being pulled out at pt and return a move
+// that continues it in that case. Expects its two liberties in libs.
+// Actually, this is a general 2-lib capture exhaustive solver.
+{
+    FORALL_IN_SLIST(libs, l) {
+        Position pos_l = *pos;
+        char *ret = play_move(&pos_l, l);
+        if (ret[0]!=0) continue;
+        // Recursively call fix_atari to check escape
+        int is_atari = fix_atari(&pos_l, pt, SINGLEPT_NOK, TWOLIBS_TEST_NO, 0, moves, sizes);
+        if (is_atari && slist_size(moves) == 0)
+            move = l;  // Ladder attack successful
+    }
+    return move;
+}
+```
+
+**Rust version:**
+```rust
+pub fn fix_atari(pos: &Position, pt: Point, singlept_ok: bool) -> Vec<Point> {
+    // ...
+    // If 2 or more liberties, not in atari
+    if libs.len() >= 2 {
+        return moves;  // Just returns! No ladder check!
+    }
+    // ...
+}
+```
+
+**Impact:** Cannot detect when groups with 2 liberties are actually capturable via a working
+ladder sequence. This is a fundamental tactical weakness.
+
+**Missing features:**
+- `read_ladder_attack()` function
+- `twolib_test` parameter for 2-liberty group testing
+- `twolib_edgeonly` parameter for edge-only ladder optimization
+- Verification that escape moves don't lead into ladders
+
+---
+
+### 3. Wrong self-atari rejection probability for random moves (`playout.rs`)
+
+**Location:** `src/playout.rs` - `try_move_with_self_atari_check()` function
+
+**C version:**
+```c
+Point choose_from(Position *pos, Slist moves, char *kind, int disp)
+{
+    // ...
+    if (strcmp(kind,"random") == 0)
+        tstrej = r <= 10000.0*PROB_RSAREJECT;  // 0.5 for random
+    else
+        tstrej = r <= 10000.0*PROB_SSAREJECT;  // 0.9 for heuristic
+    // ...
+}
+```
+
+**Rust version:**
+```rust
+fn try_move_with_self_atari_check(pos: &Position, pt: Point) -> bool {
+    // ...
+    if random_float() < PROB_SSAREJECT {  // Always 0.9, never 0.5!
+        // ...
+    }
+}
+```
+
+**Impact:** Random moves are over-rejected (90% vs 50%), reducing valid nakade and other
+tactical random moves that are intentionally self-atari.
+
+**Fix Required:** Pass a flag to distinguish random vs heuristic moves, use `PROB_RSAREJECT`
+(0.5) for random moves.
+
+---
+
+### 4. Missing `sqrt()` in large pattern prior (`mcts.rs`)
+
+**Location:** `src/mcts.rs` - `apply_priors()` function
+
+**C version:**
+```c
+double patternprob = large_pattern_probability(pt);
+if (patternprob > 0.0) {
+    double pattern_prior = sqrt(patternprob);  // "tone up"
+    node->pv += pattern_prior * PRIOR_LARGEPATTERN;
+    node->pw += pattern_prior * PRIOR_LARGEPATTERN;
+}
+```
+
+**Rust version:**
+```rust
+let pattern_prob = large_pattern_probability(parent_pos, pt);
+if pattern_prob >= 0.0 {
+    let pattern_prior = pattern_prob as u32;  // Missing sqrt()!
+    child.pv += pattern_prior * PRIOR_LARGEPATTERN;
+    child.pw += pattern_prior * PRIOR_LARGEPATTERN;
+}
+```
+
+**Impact:** Pattern priors are not "toned up" with sqrt(), changing their relative strength.
+Low-probability patterns get proportionally less prior than they should.
+
+**Fix Required:** Add `.sqrt()` call before casting to u32.
+
+---
+
+## 🟡 Medium Issues
+
+### 5. Missing shuffle in `most_urgent()` (`mcts.rs`)
+
+**Location:** `src/mcts.rs` - `most_urgent()` function
+
+**C version:**
+```c
+TreeNode* most_urgent(TreeNode **children, int nchildren, int disp)
+{
+    // Randomize the order of the nodes
+    SHUFFLE(TreeNode *, children, nchildren);
+    // Then find max urgency
+}
+```
+
+**Rust version:**
+```rust
+fn most_urgent(children: &[TreeNode]) -> usize {
+    children
+        .iter()
+        .enumerate()
+        .max_by(...)  // No shuffle!
+        .map(|(i, _)| i)
+        .unwrap_or(0)
+}
+```
+
+**Impact:** When multiple nodes have equal urgency (common early in search), Rust always
+picks the first one instead of randomly choosing. This reduces exploration diversity.
+
+---
+
+### 6. Missing group size tracking (`position.rs`)
+
+**C version returns sizes:**
+```c
+int fix_atari(Position *pos, Point pt, int singlept_ok,
+        int twolib_test, int twolib_edgeonly, Slist moves, Slist sizes)
+```
+
+**Rust version only returns moves:**
+```rust
+pub fn fix_atari(pos: &Position, pt: Point, singlept_ok: bool) -> Vec<Point>
+```
+
+**Impact:** Cannot prioritize captures of larger groups over smaller ones.
+
+---
+
+### 7. Escape move doesn't verify ladder safety (`position.rs`)
+
+**C version checks ladder after escape:**
+```c
+if (slist_size(libs) >= 2) {
+    if (slist_size(moves)>1
+    || (slist_size(libs)==2 && read_ladder_attack(&escpos,l,libs) == 0)
+    || (slist_size(libs)>=3))
+        // Accept escape move
+}
+```
+
+**Rust version accepts any escape:**
+```rust
+if new_libs.len() >= 2 {
+    // Good, we escape - no ladder check!
+    moves.push(lib);
+}
+```
+
+**Impact:** May suggest escape moves that lead directly into a working ladder.
+
+---
+
+## Summary Table
+
+| Issue | Severity | Location | Status |
+|-------|----------|----------|--------|
+| AMAF not updated in playout | 🔴 Critical | `playout.rs` | TODO |
+| Missing ladder attack detection | 🔴 Critical | `position.rs` | TODO |
+| Wrong PROB_RSAREJECT usage | 🔴 Critical | `playout.rs` | TODO |
+| Missing sqrt() in pattern prior | 🔴 Critical | `mcts.rs` | TODO |
+| Missing shuffle in most_urgent() | 🟡 Medium | `mcts.rs` | TODO |
+| Missing group size tracking | 🟡 Medium | `position.rs` | TODO |
+| No ladder check on escape | 🟡 Medium | `position.rs` | TODO |
+
+---
+
+## Recommended Fix Priority
+
+1. **Fix AMAF in playout** - Highest impact, relatively simple fix
+2. **Use PROB_RSAREJECT for random moves** - Quick fix, good impact
+3. **Add sqrt() to pattern prior** - One-line fix
+4. **Add shuffle in most_urgent()** - Simple fix
+5. **Implement ladder reading** - Complex but important for tactical strength
