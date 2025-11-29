@@ -27,11 +27,11 @@
 
 ## Playout Improvements
 
-- [ ] **Full playout heuristics** - The C code uses sophisticated move generation:
-  - `gen_playout_moves_capture()` - Generate capture/atari-related moves
-  - `gen_playout_moves_pat3()` - Generate moves matching 3x3 patterns
-  - `gen_playout_moves_random()` - Generate random moves avoiding eyes
-  - `choose_from()` - Select from suggested moves with self-atari rejection
+- [x] **Full playout heuristics** - The C code uses sophisticated move generation:
+  - `gen_playout_moves_capture()` - Generate capture/atari-related moves (as `try_capture_moves`)
+  - `gen_playout_moves_pat3()` - Generate moves matching 3x3 patterns (as `try_pattern_moves`)
+  - `gen_playout_moves_random()` - Generate random moves avoiding eyes (as `choose_random_move`)
+  - `choose_from()` - Select from suggested moves with self-atari rejection (as `try_move_with_self_atari_check`)
   - `make_list_last_moves_neighbors()` - Prioritize moves near recent play
 
 ## MCTS Enhancements
