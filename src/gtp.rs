@@ -64,14 +64,19 @@ impl Default for GtpEngine {
 }
 
 impl GtpEngine {
-    /// Create a new GTP engine.
+    /// Create a new GTP engine with default settings.
     pub fn new() -> Self {
+        Self::with_simulations(N_SIMS)
+    }
+
+    /// Create a new GTP engine with a specified number of simulations per move.
+    pub fn with_simulations(n_sims: usize) -> Self {
         let pos = Position::new();
         let tree = Some(TreeNode::new(&pos));
         Self {
             pos,
             tree,
-            n_sims: N_SIMS,
+            n_sims,
         }
     }
 

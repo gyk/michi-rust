@@ -9,12 +9,39 @@
 //! - `michi-rust gtp` - Start GTP server for GUI integration
 //! - `michi-rust demo` - Run the MCTS demo
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 
 use michi_rust::board::{Board, Color};
 use michi_rust::gtp::GtpEngine;
 use michi_rust::mcts::TreeNode;
 use michi_rust::position::{str_coord, Position};
+
+/// Predefined intelligence levels
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum Level {
+    /// Very weak: 10 simulations (for testing)
+    Weak,
+    /// Medium strength: 500 simulations
+    Medium,
+    /// Strong: 1400 simulations (default)
+    Strong,
+    /// Very strong: 5000 simulations
+    VeryStrong,
+    /// Maximum: 20000 simulations (slow but strongest)
+    Max,
+}
+
+impl Level {
+    fn to_sims(self) -> usize {
+        match self {
+            Level::Weak => 10,
+            Level::Medium => 500,
+            Level::Strong => 1400,
+            Level::VeryStrong => 5000,
+            Level::Max => 20000,
+        }
+    }
+}
 
 /// Michi-Rust: A minimalistic Go MCTS engine
 #[derive(Parser)]
@@ -28,7 +55,15 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// Start the GTP (Go Text Protocol) server for use with GUI applications
-    Gtp,
+    Gtp {
+        /// Number of MCTS simulations per move (higher = stronger but slower)
+        #[arg(short = 's', long, default_value_t = 1400)]
+        simulations: usize,
+
+        /// Predefined intelligence level (overrides --simulations if set)
+        #[arg(short = 'l', long, value_enum)]
+        level: Option<Level>,
+    },
     /// Run a simple demo of the engine
     Demo,
 }
@@ -37,9 +72,18 @@ fn main() {
     let cli = Cli::parse();
 
     match cli.command {
-        Some(Commands::Gtp) => {
+        Some(Commands::Gtp { simulations, level }) => {
+            // Determine number of simulations
+            let n_sims = if let Some(lvl) = level {
+                lvl.to_sims()
+            } else {
+                simulations
+            };
+
+            eprintln!("michi-rust: Starting GTP with {} simulations per move", n_sims);
+
             // Run GTP server
-            let mut engine = GtpEngine::new();
+            let mut engine = GtpEngine::with_simulations(n_sims);
             engine.run();
         }
         Some(Commands::Demo) | None => {
