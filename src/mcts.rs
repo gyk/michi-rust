@@ -491,14 +491,6 @@ fn best_move(tree: &TreeNode) -> usize {
         .unwrap_or(PASS_MOVE)
 }
 
-/// Calculate the winrate for a node.
-///
-/// Returns -0.1 for unvisited nodes to indicate they haven't been explored.
-#[deprecated(note = "Use TreeNode::winrate() method instead")]
-pub fn winrate(node: &TreeNode) -> f64 {
-    node.winrate()
-}
-
 /// Print debug information about the root's children.
 pub fn dump_children(root: &TreeNode) {
     for child in &root.children {
@@ -561,9 +553,23 @@ pub fn dump_subtree(node: &TreeNode, thres: u32, indent: &str, recurse: bool) {
 
 /// Get the N best moves from a tree (by visit count).
 fn get_best_moves(tree: &TreeNode, n: usize) -> Vec<&TreeNode> {
+    if n == 0 {
+        return vec![];
+    }
+
     let mut children: Vec<&TreeNode> = tree.children.iter().collect();
-    children.sort_by(|a, b| b.v.cmp(&a.v));
-    children.into_iter().take(n).collect()
+    if children.len() <= n {
+        // If we need all or more elements than available, just sort everything
+        children.sort_by(|a, b| b.v.cmp(&a.v));
+        return children;
+    }
+    // Partition so that the top n elements are at the front (in arbitrary order)
+    children.select_nth_unstable_by(n - 1, |a, b| b.v.cmp(&a.v));
+
+    // Take the top n elements and sort them
+    let mut best: Vec<&TreeNode> = children.into_iter().take(n).collect();
+    best.sort_by(|a, b| b.v.cmp(&a.v));
+    best
 }
 
 /// Print a summary of the search progress.
