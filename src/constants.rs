@@ -8,7 +8,7 @@
 // =============================================================================
 
 /// Board size (NxN). Standard Go sizes are 9, 13, or 19.
-pub const N: usize = 13;
+pub const N: usize = 9;
 
 /// Board width including left padding (N + 2 for padding on both sides).
 pub const W: usize = N + 2;
