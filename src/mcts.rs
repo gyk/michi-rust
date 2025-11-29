@@ -17,7 +17,7 @@ use crate::constants::{
 use crate::patterns::{large_pattern_probability, pat3_match};
 use crate::playout::{mcplayout, random_int};
 use crate::position::{
-    all_neighbors, fix_atari, gen_capture_moves_all, is_eye, pass_move, play_move, str_coord,
+    all_neighbors, fix_atari_ext, gen_capture_moves_all, is_eye, pass_move, play_move, str_coord,
     Point, Position,
 };
 
@@ -172,7 +172,11 @@ fn apply_priors(child: &mut TreeNode, parent_pos: &Position, pt: Point, cfg_map:
     }
 
     // 5. Self-atari prior (negative) - penalize moves that put us in atari
-    let atari_moves = fix_atari(&child.pos, pt, true);
+    // Use fix_atari_ext with:
+    // - singlept_ok=true (SINGLEPT_OK): don't worry about single stone groups
+    // - twolib_test=true (TWOLIBS_TEST): check 2-lib groups for ladder captures
+    // - twolib_edgeonly=false (!TWOLIBS_EDGE_ONLY): full ladder analysis (expensive but accurate)
+    let atari_moves = fix_atari_ext(&child.pos, pt, true, true, false);
     if !atari_moves.is_empty() {
         child.pv += PRIOR_SELFATARI;
         // pw stays at pw, giving a lower winrate

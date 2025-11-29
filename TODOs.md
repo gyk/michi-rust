@@ -241,7 +241,32 @@ picks the first one instead of randomly choosing. This reduces exploration diver
 
 ---
 
-### 6. Missing group size tracking (`position.rs`)
+### 6. Self-atari prior uses edge-only ladder optimization (`mcts.rs`) ✅ FIXED
+
+**Location:** `src/mcts.rs` - `apply_priors()` function
+
+**C version:**
+```c
+fix_atari(&node->pos, pt, SINGLEPT_OK, TWOLIBS_TEST, !TWOLIBS_EDGE_ONLY, moves, sizes);
+```
+Note: `!TWOLIBS_EDGE_ONLY` = false, meaning full ladder analysis for interior groups.
+
+**Rust version (before fix):**
+```rust
+let atari_moves = fix_atari(&child.pos, pt, true);
+// fix_atari defaults to twolib_edgeonly=true, skipping interior ladder analysis!
+```
+
+**Impact:** Self-atari detection for MCTS priors was missing ladders in interior positions.
+The C version does full ladder analysis for the self-atari prior check, but Rust was using
+the edge-only optimization.
+
+**Fix Applied:** Changed to use `fix_atari_ext(&child.pos, pt, true, true, false)` which
+matches the C behavior with `twolib_edgeonly=false` for full ladder analysis.
+
+---
+
+### 7. Missing group size tracking (`position.rs`)
 
 **C version returns sizes:**
 ```c
@@ -322,6 +347,7 @@ ladder analysis (matching C's `expensive_ok=1` parameter).
 | Missing ladder attack detection | 🔴 Critical | `position.rs` | ✅ Fixed |
 | Wrong PROB_RSAREJECT usage | 🔴 Critical | `playout.rs` | ✅ Fixed |
 | Missing sqrt() in pattern prior | 🔴 Critical | `mcts.rs` | ✅ Fixed |
+| Self-atari prior uses edge-only optimization | 🟡 Medium | `mcts.rs` | ✅ Fixed |
 | Missing shuffle in most_urgent() | 🟡 Medium | `mcts.rs` | ✅ Fixed |
 | Missing group size tracking | 🟡 Medium | `position.rs` | TODO |
 | No ladder check on escape | 🟡 Medium | `position.rs` | ✅ Fixed |
