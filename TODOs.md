@@ -299,7 +299,7 @@ if (slist_size(libs) >= 2) {
 ```rust
 if new_libs.len() >= 2 {
     // Good, we escape - but check we're not walking into a ladder
-    if !moves.is_empty()
+    if moves.len() > 1          // Changed from !moves.is_empty()
         || new_libs.len() >= 3
         || read_ladder_attack(&test_pos, lib, &new_libs) == 0
     {
@@ -309,6 +309,9 @@ if new_libs.len() >= 2 {
 ```
 
 **Status:** Fixed - escape moves are now verified to not lead into working ladders.
+The condition was corrected from `!moves.is_empty()` to `moves.len() > 1` to match
+the C code's `slist_size(moves) > 1`. This ensures we only skip the ladder check
+if there are 2+ counter-capture moves available, not just 1.
 
 ---
 
@@ -350,7 +353,7 @@ ladder analysis (matching C's `expensive_ok=1` parameter).
 | Self-atari prior uses edge-only optimization | 🟡 Medium | `mcts.rs` | ✅ Fixed |
 | Missing shuffle in most_urgent() | 🟡 Medium | `mcts.rs` | ✅ Fixed |
 | Missing group size tracking | 🟡 Medium | `position.rs` | TODO |
-| No ladder check on escape | 🟡 Medium | `position.rs` | ✅ Fixed |
+| Escape ladder check skipped too easily | 🟡 Medium | `position.rs` | ✅ Fixed |
 | Capture priors only check neighbors | 🔴 Critical | `mcts.rs` | ✅ Fixed |
 
 ---

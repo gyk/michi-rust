@@ -855,10 +855,11 @@ pub fn fix_atari_ext(
         if new_libs.len() >= 2 {
             // Good, we escape - but check we're not walking into a ladder
             // Accept escape if:
-            // - We already have alternative moves (counter-captures)
+            // - We already have more than 1 alternative move (counter-captures)
+            //   (C code: slist_size(moves) > 1, i.e., need 2+ moves to skip ladder check)
             // - We get 3+ liberties (definitely safe)
             // - We get exactly 2 liberties but ladder check fails
-            if !moves.is_empty()
+            if moves.len() > 1
                 || new_libs.len() >= 3
                 || read_ladder_attack(&test_pos, lib, &new_libs) == 0
             {
