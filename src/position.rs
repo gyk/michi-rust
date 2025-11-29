@@ -878,13 +878,13 @@ pub fn fix_atari_ext(
 /// - Opponent groups in atari (can capture)
 /// - Own groups in atari (need to save)
 ///
+/// This is the "cheap" version used in playouts, only checking neighbors
+/// of the last two moves. Use `gen_capture_moves_all` for MCTS priors.
+///
 /// Returns (move, group_size) pairs for prioritization.
 pub fn gen_capture_moves(pos: &Position) -> Vec<(Point, usize)> {
-    let mut moves = Vec::new();
-    let mut checked = [false; BOARDSIZE];
-
     // Get neighbor points of last moves
-    let mut points_to_check = Vec::new();
+    let mut points_to_check = Vec::with_capacity(20);
 
     if pos.last != 0 {
         points_to_check.push(pos.last);
@@ -903,6 +903,51 @@ pub fn gen_capture_moves(pos: &Position) -> Vec<(Point, usize)> {
         }
     }
 
+    gen_capture_moves_in_set(pos, Some(&points_to_check), true)
+}
+
+/// Generate capture moves for all groups on the board.
+///
+/// This is the "expensive" version used for MCTS priors, which scans the
+/// entire board for groups in atari. The C version uses `allpoints` for this.
+///
+/// Parameters:
+/// - `twolib_edgeonly`: If false, performs full ladder analysis even for
+///   interior groups (expensive but more accurate for priors).
+///
+/// Returns (move, group_size) pairs for prioritization.
+pub fn gen_capture_moves_all(pos: &Position, twolib_edgeonly: bool) -> Vec<(Point, usize)> {
+    gen_capture_moves_in_set(pos, None, twolib_edgeonly)
+}
+
+/// Generate capture moves, optionally restricted to a set of points.
+///
+/// Parameters:
+/// - `pos`: Current position
+/// - `points`: If Some, only check stones in these points. If None, check all stones.
+/// - `twolib_edgeonly`: If true, skip expensive ladder checks for interior 2-lib groups.
+///
+/// This matches the C function `gen_playout_moves_capture` which accepts a
+/// `heuristic_set` parameter that can be either `last_moves_neighbors` (for playouts)
+/// or `allpoints` (for MCTS priors).
+fn gen_capture_moves_in_set(
+    pos: &Position,
+    points: Option<&[Point]>,
+    twolib_edgeonly: bool,
+) -> Vec<(Point, usize)> {
+    let mut moves = Vec::new();
+    let mut checked = [false; BOARDSIZE];
+
+    // Determine which points to check
+    let points_to_check: Vec<Point> = if let Some(pts) = points {
+        pts.to_vec()
+    } else {
+        // Check all valid board points (matches C's `allpoints` behavior)
+        (BOARD_IMIN..BOARD_IMAX)
+            .filter(|&pt| pos.color[pt] != OUT)
+            .collect()
+    };
+
     for pt in points_to_check {
         if checked[pt] {
             continue;
@@ -910,7 +955,8 @@ pub fn gen_capture_moves(pos: &Position) -> Vec<(Point, usize)> {
 
         if pos.color[pt] == STONE_BLACK || pos.color[pt] == STONE_WHITE {
             checked[pt] = true;
-            let atari_moves = fix_atari(pos, pt, false);
+            // Use fix_atari_ext with twolib_edgeonly parameter
+            let atari_moves = fix_atari_ext(pos, pt, false, true, twolib_edgeonly);
 
             for m in atari_moves {
                 // Get the size of the group that would be affected

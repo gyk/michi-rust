@@ -287,6 +287,33 @@ if new_libs.len() >= 2 {
 
 ---
 
+### 8. Capture priors only check neighbors, not whole board (`mcts.rs`) ✅ FIXED
+
+**Location:** `src/mcts.rs` - `apply_priors()` function
+
+**C version scans entire board for capture priors:**
+```c
+// In expand():
+gen_playout_moves_capture(&tree->pos, allpoints, 1, 1, moves, sizes);
+// allpoints contains all board positions, enabling detection of atari anywhere
+```
+
+**Rust version only checked neighbors of last moves:**
+```rust
+let capture_moves = gen_capture_moves(parent_pos);
+// gen_capture_moves only looked at neighbors of last and last2
+```
+
+**Impact:** Missed capture opportunities away from recent play. The C version gives capture
+priors to moves that capture groups in atari anywhere on the board, while Rust only found
+captures near the last two moves.
+
+**Fix Applied:** Added `gen_capture_moves_all()` function that scans all board positions for
+groups in atari. MCTS priors now use this function with `twolib_edgeonly=false` for full
+ladder analysis (matching C's `expensive_ok=1` parameter).
+
+---
+
 ## Summary Table
 
 | Issue | Severity | Location | Status |
@@ -298,6 +325,7 @@ if new_libs.len() >= 2 {
 | Missing shuffle in most_urgent() | 🟡 Medium | `mcts.rs` | ✅ Fixed |
 | Missing group size tracking | 🟡 Medium | `position.rs` | TODO |
 | No ladder check on escape | 🟡 Medium | `position.rs` | ✅ Fixed |
+| Capture priors only check neighbors | 🔴 Critical | `mcts.rs` | ✅ Fixed |
 
 ---
 

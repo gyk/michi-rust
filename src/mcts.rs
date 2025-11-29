@@ -17,7 +17,7 @@ use crate::constants::{
 use crate::patterns::{large_pattern_probability, pat3_match};
 use crate::playout::{mcplayout, random_int};
 use crate::position::{
-    all_neighbors, fix_atari, gen_capture_moves, is_eye, pass_move, play_move, str_coord,
+    all_neighbors, fix_atari, gen_capture_moves_all, is_eye, pass_move, play_move, str_coord,
     Point, Position,
 };
 
@@ -155,7 +155,9 @@ fn apply_priors(child: &mut TreeNode, parent_pos: &Position, pt: Point, cfg_map:
     }
 
     // 4. Capture prior - check if this move captures or saves stones
-    let capture_moves = gen_capture_moves(parent_pos);
+    // Use gen_capture_moves_all to scan ALL groups on the board (not just neighbors)
+    // with twolib_edgeonly=false for full ladder analysis (expensive but accurate for priors)
+    let capture_moves = gen_capture_moves_all(parent_pos, false);
     for (mv, size) in capture_moves {
         if mv == pt {
             if size == 1 {
