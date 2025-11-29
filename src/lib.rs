@@ -16,7 +16,7 @@
 //! ## Example
 //!
 //! ```
-//! use michi_rust::position::{Position, play_move, parse_coord, str_coord};
+//! use michi_rust::position::{Position, play_move, parse_coord, str_coord, format_position};
 //! use michi_rust::mcts::{TreeNode, tree_search};
 //!
 //! // Create a new game
@@ -24,6 +24,12 @@
 //!
 //! // Play a move
 //! play_move(&mut pos, parse_coord("D4"));
+//!
+//! // Display the position (via Display trait)
+//! println!("{}", pos);
+//!
+//! // Or use format_position for the formatted string
+//! let board_str = format_position(&pos);
 //!
 //! // Run MCTS to find the best response
 //! let mut root = TreeNode::new(&pos);

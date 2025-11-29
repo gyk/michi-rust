@@ -146,9 +146,19 @@ fn run_demo() {
 
     // Demo 2: Position with MCTS
     println!("=== MCTS Demo ===");
-    let pos = Position::new();
-    let mut root = TreeNode::new(&pos);
+    let mut pos = Position::new();
+    println!("Initial position:");
+    println!("{pos}");
 
+    // Play a few moves to show the board display
+    michi_rust::position::play_move(&mut pos, michi_rust::position::parse_coord("D4"));
+    michi_rust::position::play_move(&mut pos, michi_rust::position::parse_coord("F6"));
+    michi_rust::position::play_move(&mut pos, michi_rust::position::parse_coord("E5"));
+    println!("After 3 moves:");
+    println!("{pos}");
+
+    // Run MCTS
+    let mut root = TreeNode::new(&pos);
     println!("Running 100 MCTS simulations...");
     let best_move = michi_rust::mcts::tree_search(&mut root, 100);
     println!("Best move: {}", str_coord(best_move));

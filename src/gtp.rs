@@ -30,7 +30,9 @@ use std::io::{self, BufRead, Write};
 
 use crate::constants::{N, N_SIMS, PASS_MOVE, RESIGN_MOVE, RESIGN_THRES};
 use crate::mcts::{tree_search, TreeNode};
-use crate::position::{empty_position, parse_coord, pass_move, play_move, Position, str_coord};
+use crate::position::{
+    empty_position, format_position, parse_coord, pass_move, play_move, Position, str_coord,
+};
 
 /// The list of known GTP commands.
 const KNOWN_COMMANDS: &[&str] = &[
@@ -44,6 +46,7 @@ const KNOWN_COMMANDS: &[&str] = &[
     "play",
     "protocol_version",
     "quit",
+    "showboard",
     "version",
 ];
 
@@ -276,6 +279,13 @@ impl GtpEngine {
                     play_move(&mut self.pos, pt);
                     (true, str_coord(pt))
                 }
+            }
+
+            "showboard" => {
+                // Output the board to stderr (GTP debug output) and return empty success
+                let board_str = format_position(&self.pos);
+                eprint!("{}", board_str);
+                (true, format!("\n{}", board_str.trim_end()))
             }
 
             _ => (false, format!("unknown command: {command}")),

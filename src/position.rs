@@ -1061,6 +1061,146 @@ pub fn str_coord(pt: Point) -> String {
     format!("{c}{}", N + 1 - row)
 }
 
+// =============================================================================
+// Board Display (Debug Features)
+// =============================================================================
+
+/// Column labels for board display (skipping 'I' per Go convention).
+const COL_LABELS: &[u8] = b"ABCDEFGHJKLMNOPQRSTUVWXYZ";
+
+/// Convert internal color representation to display character.
+///
+/// The internal representation uses 'X' for current player and 'x' for opponent.
+/// This function converts to standard Go notation:
+/// - Black stones: 'X'
+/// - White stones: 'O'
+///
+/// Also handles empty points ('.') and out-of-bounds (' ').
+fn display_color(c: u8, black_to_play: bool) -> char {
+    match c {
+        STONE_BLACK => {
+            if black_to_play { 'X' } else { 'O' }
+        }
+        STONE_WHITE => {
+            if black_to_play { 'O' } else { 'X' }
+        }
+        EMPTY => '.',
+        _ => ' ',
+    }
+}
+
+/// Format the position as a string for display.
+///
+/// This produces a visualization similar to michi-c's `print_pos`.
+/// The last move is highlighted with parentheses.
+///
+/// Example output for a 9x9 board:
+/// ```text
+/// Move: 3     Black: 0 caps   White: 0 caps   Komi: 7.5
+///  9  . . . . . . . . .
+///  8  . . . . . . . . .
+///  7  . . . . . . . . .
+///  6  . . . . . . . . .
+///  5  . . . .(X). . . .
+///  4  . . . O X . . . .
+///  3  . . . . . . . . .
+///  2  . . . . . . . . .
+///  1  . . . . . . . . .
+///     A B C D E F G H J
+/// ```
+pub fn format_position(pos: &Position) -> String {
+    use std::fmt::Write;
+
+    let mut output = String::with_capacity(512);
+    let black_to_play = pos.n % 2 == 0;
+
+    // Compute captures for display (internal tracking swaps after each move)
+    let (cap_black, cap_white) = if black_to_play {
+        (pos.cap_x, pos.cap)
+    } else {
+        (pos.cap, pos.cap_x)
+    };
+
+    // Header line with move number, captures, and komi
+    write!(
+        output,
+        "Move: {:<3}   Black: {} caps   White: {} caps   Komi: {:.1}",
+        pos.n, cap_black, cap_white, pos.komi
+    )
+    .unwrap();
+
+    // Ko point (if any)
+    if pos.ko != 0 {
+        write!(output, "   ko: {}", str_coord(pos.ko)).unwrap();
+    }
+    output.push('\n');
+
+    // Board rows (from top to bottom: row N down to row 1)
+    for row in 1..=N {
+        let row_label = N - row + 1;
+        // Add row number with proper spacing
+        write!(output, " {:>2} ", row_label).unwrap();
+
+        for col in 1..=N {
+            let k = row * (N + 1) + col;
+            let c = display_color(pos.color[k], black_to_play);
+
+            // Check if this is the last move (mark with parentheses)
+            // Note: pos.last == 0 means pass or no move, so we check pos.last != 0
+            let prev = if col > 1 { row * (N + 1) + col - 1 } else { 0 };
+
+            // Opening paren before the stone
+            if pos.last != 0 && pos.last == k {
+                output.push('(');
+            } else if pos.last != 0 && pos.last == prev {
+                output.push(')');
+            } else {
+                output.push(' ');
+            }
+
+            output.push(c);
+        }
+
+        // Closing paren after last stone if it's at the end of the row
+        if pos.last != 0 && pos.last == row * (N + 1) + N {
+            output.push(')');
+        }
+        output.push('\n');
+    }
+
+    // Column labels
+    output.push_str("    ");
+    for col in 0..N {
+        output.push(' ');
+        output.push(COL_LABELS[col] as char);
+    }
+    output.push_str("\n\n");
+
+    output
+}
+
+/// Print the position to stderr (for debugging).
+///
+/// This is useful for quick debugging during development or in GTP debug mode.
+pub fn print_pos(pos: &Position) {
+    eprint!("{}", format_position(pos));
+}
+
+impl std::fmt::Display for Position {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", format_position(self))
+    }
+}
+
+impl std::fmt::Debug for Position {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "Position {{")?;
+        writeln!(f, "  n: {}, ko: {}, last: {}", self.n, self.ko, self.last)?;
+        write!(f, "{}", format_position(self))?;
+        write!(f, "}}")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1291,5 +1431,54 @@ mod tests {
 
         assert!(env4_ok(&pos), "env4 inconsistent after playout simulation");
     }
-}
 
+    #[test]
+    fn test_display_empty_board() {
+        let pos = Position::new();
+        let display = format_position(&pos);
+
+        // Check that the display contains expected elements
+        assert!(display.contains("Move: 0"), "Should show move 0");
+        assert!(display.contains("Black: 0 caps"), "Should show black captures");
+        assert!(display.contains("White: 0 caps"), "Should show white captures");
+        assert!(display.contains("Komi: 7.5"), "Should show komi");
+
+        // Check row labels exist
+        for row in 1..=N {
+            assert!(display.contains(&format!(" {} ", row)), "Should have row label {}", row);
+        }
+
+        // Check column labels
+        assert!(display.contains(" A ") || display.contains("A B"), "Should have column labels");
+    }
+
+    #[test]
+    fn test_display_with_stones() {
+        let mut pos = Position::new();
+        play_move(&mut pos, parse_coord("D4"));
+        let display = format_position(&pos);
+
+        // After one move by Black
+        assert!(display.contains("Move: 1"), "Should show move 1");
+        // The last move should be marked (with parentheses)
+        assert!(display.contains("(X)"), "Last move should be marked with (X)");
+    }
+
+    #[test]
+    fn test_display_trait() {
+        let pos = Position::new();
+        // Test that Display trait works
+        let display = format!("{}", pos);
+        assert!(!display.is_empty());
+        assert!(display.contains("Move:"));
+    }
+
+    #[test]
+    fn test_debug_trait() {
+        let pos = Position::new();
+        // Test that Debug trait works
+        let debug = format!("{:?}", pos);
+        assert!(debug.contains("Position {"));
+        assert!(debug.contains("n: 0"));
+    }
+}
