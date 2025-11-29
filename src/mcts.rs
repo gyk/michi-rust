@@ -15,7 +15,7 @@ use crate::constants::{
     PRIOR_PAT3, PRIOR_SELFATARI, RAVE_EQUIV, W, EMPTY, OUT,
 };
 use crate::patterns::{large_pattern_probability, pat3_match};
-use crate::playout::mcplayout;
+use crate::playout::{mcplayout, random_int};
 use crate::position::{
     all_neighbors, fix_atari, gen_capture_moves, is_eye, pass_move, play_move, str_coord,
     Point, Position,
@@ -147,8 +147,9 @@ fn apply_priors(child: &mut TreeNode, parent_pos: &Position, pt: Point, cfg_map:
 
     // 3. Large pattern prior - use probability from pattern database
     let pattern_prob = large_pattern_probability(parent_pos, pt);
-    if pattern_prob >= 0.0 {
-        let pattern_prior = pattern_prob as u32;
+    if pattern_prob > 0.0 {
+        // Apply sqrt() to "tone up" low-probability patterns (same as michi-c)
+        let pattern_prior = pattern_prob.sqrt() as u32;
         child.pv += pattern_prior * PRIOR_LARGEPATTERN;
         child.pw += pattern_prior * PRIOR_LARGEPATTERN;
     }
@@ -277,7 +278,23 @@ fn rave_urgency(node: &TreeNode) -> f64 {
 }
 
 /// Select the child with the highest urgency score.
-fn most_urgent(children: &[TreeNode]) -> usize {
+///
+/// When multiple children have equal urgency (common early in search),
+/// shuffles the children first to randomize the selection.
+fn most_urgent(children: &mut [TreeNode]) -> usize {
+    if children.is_empty() {
+        return 0;
+    }
+
+    // Shuffle the children array to randomize selection when urgencies are equal
+    // This is important for exploration diversity, especially early in search
+    let n = children.len();
+    for i in 0..n {
+        let j = i + random_int((n - i) as u32) as usize;
+        children.swap(i, j);
+    }
+
+    // Find the child with maximum urgency
     children
         .iter()
         .enumerate()
@@ -304,7 +321,7 @@ fn tree_descend(tree: &mut TreeNode, amaf_map: &mut [i8]) -> Vec<usize> {
             break;
         }
 
-        let child_idx = most_urgent(&node.children);
+        let child_idx = most_urgent(&mut node.children);
         path.push(child_idx);
 
         let child = &node.children[child_idx];

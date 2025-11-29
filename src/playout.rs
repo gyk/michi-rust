@@ -10,7 +10,7 @@
 
 use crate::constants::{
     BOARD_IMAX, BOARD_IMIN, EMPTY, MAX_GAME_LEN, N, W,
-    PROB_HEURISTIC_CAPTURE, PROB_HEURISTIC_PAT3, PROB_SSAREJECT,
+    PROB_HEURISTIC_CAPTURE, PROB_HEURISTIC_PAT3, PROB_RSAREJECT, PROB_SSAREJECT,
     STONE_BLACK,
 };
 use crate::patterns::pat3_match;
@@ -41,7 +41,7 @@ fn qdrandom() -> u32 {
 
 /// Generate a random integer in [0, n).
 #[inline]
-fn random_int(n: u32) -> u32 {
+pub fn random_int(n: u32) -> u32 {
     let r = qdrandom() as u64;
     ((r * n as u64) >> 32) as u32
 }
@@ -164,7 +164,7 @@ fn try_capture_moves(pos: &Position, neighbors: &[Point]) -> Option<Point> {
         if pos.color[pt] == STONE_BLACK || pos.color[pt] == b'x' {
             let moves = fix_atari(pos, pt, false);
             for mv in moves {
-                if try_move_with_self_atari_check(pos, mv) {
+                if try_move_with_self_atari_check(pos, mv, false) {
                     return Some(mv);
                 }
             }
@@ -177,7 +177,7 @@ fn try_capture_moves(pos: &Position, neighbors: &[Point]) -> Option<Point> {
 fn try_pattern_moves(pos: &Position, neighbors: &[Point]) -> Option<Point> {
     for &pt in neighbors {
         if pos.color[pt] == EMPTY && pat3_match(pos, pt) {
-            if try_move_with_self_atari_check(pos, pt) {
+            if try_move_with_self_atari_check(pos, pt, false) {
                 return Some(pt);
             }
         }
@@ -186,14 +186,19 @@ fn try_pattern_moves(pos: &Position, neighbors: &[Point]) -> Option<Point> {
 }
 
 /// Check if a move is legal and not a self-atari (with probability-based rejection).
-fn try_move_with_self_atari_check(pos: &Position, pt: Point) -> bool {
+///
+/// `is_random`: if true, uses lower rejection probability (PROB_RSAREJECT = 0.5)
+///              if false, uses higher rejection probability (PROB_SSAREJECT = 0.9)
+fn try_move_with_self_atari_check(pos: &Position, pt: Point, is_random: bool) -> bool {
     let mut test_pos = pos.clone();
     if !play_move(&mut test_pos, pt).is_empty() {
         return false; // Illegal move
     }
 
-    // Check for self-atari and reject with probability PROB_SSAREJECT
-    if random_float() < PROB_SSAREJECT {
+    // Check for self-atari and reject with probability based on move type
+    // Random moves use lower rejection rate to allow more nakade/tactical moves
+    let reject_prob = if is_random { PROB_RSAREJECT } else { PROB_SSAREJECT };
+    if random_float() < reject_prob {
         let moves = fix_atari(&test_pos, pt, true);
         if !moves.is_empty() {
             // This move puts us in atari - reject it
@@ -241,7 +246,8 @@ fn choose_random_move(pos: &Position) -> Option<usize> {
 
         let pt = candidates[i];
 
-        if try_move_with_self_atari_check(pos, pt) {
+        // Use is_random=true for lower self-atari rejection rate
+        if try_move_with_self_atari_check(pos, pt, true) {
             return Some(pt);
         }
     }

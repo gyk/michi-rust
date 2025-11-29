@@ -295,9 +295,9 @@ if new_libs.len() >= 2 {
 |-------|----------|----------|--------|
 | AMAF not updated in playout | 🔴 Critical | `playout.rs` | ✅ Fixed |
 | Missing ladder attack detection | 🔴 Critical | `position.rs` | TODO |
-| Wrong PROB_RSAREJECT usage | 🔴 Critical | `playout.rs` | TODO |
-| Missing sqrt() in pattern prior | 🔴 Critical | `mcts.rs` | TODO |
-| Missing shuffle in most_urgent() | 🟡 Medium | `mcts.rs` | TODO |
+| Wrong PROB_RSAREJECT usage | 🔴 Critical | `playout.rs` | ✅ Fixed |
+| Missing sqrt() in pattern prior | 🔴 Critical | `mcts.rs` | ✅ Fixed |
+| Missing shuffle in most_urgent() | 🟡 Medium | `mcts.rs` | ✅ Fixed |
 | Missing group size tracking | 🟡 Medium | `position.rs` | TODO |
 | No ladder check on escape | 🟡 Medium | `position.rs` | TODO |
 
@@ -305,8 +305,8 @@ if new_libs.len() >= 2 {
 
 ## Recommended Fix Priority
 
-1. **Fix AMAF in playout** - Highest impact, relatively simple fix
-2. **Use PROB_RSAREJECT for random moves** - Quick fix, good impact
-3. **Add sqrt() to pattern prior** - One-line fix
-4. **Add shuffle in most_urgent()** - Simple fix
+1. ~~**Fix AMAF in playout** - Highest impact, relatively simple fix~~ ✅
+2. ~~**Use PROB_RSAREJECT for random moves** - Quick fix, good impact~~ ✅
+3. ~~**Add sqrt() to pattern prior** - One-line fix~~ ✅
+4. ~~**Add shuffle in most_urgent()** - Simple fix~~ ✅
 5. **Implement ladder reading** - Complex but important for tactical strength
