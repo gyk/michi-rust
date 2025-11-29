@@ -75,56 +75,83 @@ pub fn mcplayout(pos: &mut Position, mut amaf_map: Option<&mut [i8]>) -> f64 {
 /// Also rejects self-atari moves with high probability.
 fn choose_playout_move(pos: &Position) -> Option<Point> {
     // Get the neighborhood of the last two moves for focused heuristics
-    let neighbors = make_list_last_moves_neighbors(pos);
-
-    // 1. Try capture heuristics (with probability PROB_HEURISTIC_CAPTURE)
-    if random_float() < PROB_HEURISTIC_CAPTURE {
-        if let Some(mv) = try_capture_moves(pos, &neighbors) {
-            return Some(mv);
-        }
-    }
-
-    // 2. Try 3x3 pattern moves (with probability PROB_HEURISTIC_PAT3)
-    if random_float() < PROB_HEURISTIC_PAT3 {
-        if let Some(mv) = try_pattern_moves(pos, &neighbors) {
-            return Some(mv);
-        }
-    }
-
-    // 3. Fall back to random move
-    choose_random_move(pos)
-}
-
-/// Generate a list of points in the neighborhood of the last two moves.
-fn make_list_last_moves_neighbors(pos: &Position) -> Vec<Point> {
-    let mut points = Vec::with_capacity(20);
+    // Optimization: Use stack array instead of Vec allocation to avoid heap overhead in hot path
+    let mut neighbors = [0; 20];
+    let mut count = 0;
 
     // Add last move and its neighbors
     if pos.last != 0 {
-        points.push(pos.last);
+        neighbors[count] = pos.last;
+        count += 1;
         for n in all_neighbors(pos.last) {
-            if pos.color[n] != b' ' && !points.contains(&n) {
-                points.push(n);
+            if pos.color[n] != b' ' {
+                // Check for duplicates (linear scan is fast for small array)
+                let mut found = false;
+                for i in 0..count {
+                    if neighbors[i] == n {
+                        found = true;
+                        break;
+                    }
+                }
+                if !found {
+                    neighbors[count] = n;
+                    count += 1;
+                }
             }
         }
     }
 
     // Add last2 move and its neighbors
     if pos.last2 != 0 {
-        if !points.contains(&pos.last2) {
-            points.push(pos.last2);
+        let mut found = false;
+        for i in 0..count {
+            if neighbors[i] == pos.last2 {
+                found = true;
+                break;
+            }
         }
+        if !found {
+            neighbors[count] = pos.last2;
+            count += 1;
+        }
+
         for n in all_neighbors(pos.last2) {
-            if pos.color[n] != b' ' && !points.contains(&n) {
-                points.push(n);
+            if pos.color[n] != b' ' {
+                let mut found = false;
+                for i in 0..count {
+                    if neighbors[i] == n {
+                        found = true;
+                        break;
+                    }
+                }
+                if !found {
+                    neighbors[count] = n;
+                    count += 1;
+                }
             }
         }
     }
 
     // Shuffle for randomization
-    fastrand::shuffle(&mut points);
+    let neighbors_slice = &mut neighbors[0..count];
+    fastrand::shuffle(neighbors_slice);
 
-    points
+    // 1. Try capture heuristics (with probability PROB_HEURISTIC_CAPTURE)
+    if random_float() < PROB_HEURISTIC_CAPTURE {
+        if let Some(mv) = try_capture_moves(pos, neighbors_slice) {
+            return Some(mv);
+        }
+    }
+
+    // 2. Try 3x3 pattern moves (with probability PROB_HEURISTIC_PAT3)
+    if random_float() < PROB_HEURISTIC_PAT3 {
+        if let Some(mv) = try_pattern_moves(pos, neighbors_slice) {
+            return Some(mv);
+        }
+    }
+
+    // 3. Fall back to random move
+    choose_random_move(pos)
 }
 
 /// Try to find a capture move among the neighbor points.
@@ -186,7 +213,7 @@ fn try_move_with_self_atari_check(pos: &Position, pt: Point, is_random: bool) ->
 ///
 /// Uses random starting index for fairness, similar to the C implementation.
 fn choose_random_move(pos: &Position) -> Option<usize> {
-    // Collect candidate moves (empty points that aren't true eyes)
+    // Collect candidate moves (empty points that are not true eyes)
     let mut candidates = Vec::with_capacity(N * N);
 
     // Start from a random index for better randomization
@@ -209,12 +236,9 @@ fn choose_random_move(pos: &Position) -> Option<usize> {
         return None;
     }
 
-    // Shuffle and try moves until we find a legal one
-    // (some candidates might be suicide moves or self-atari)
-    let n = candidates.len();
-    for i in 0..n {
-        // Pick a random remaining candidate
-        let j = i + fastrand::usize(0..n - i);
+    // Fisher-Yates shuffle to ensure unbiased ordering of candidates
+    for i in 0..candidates.len() {
+        let j = i + fastrand::usize(0..candidates.len() - i);
         candidates.swap(i, j);
 
         let pt = candidates[i];

@@ -285,27 +285,37 @@ fn rave_urgency(node: &TreeNode) -> f64 {
 /// Select the child with the highest urgency score.
 ///
 /// When multiple children have equal urgency (common early in search),
-/// shuffles the children first to randomize the selection.
+/// picks one randomly using reservoir sampling to avoid shuffling the array.
 fn most_urgent(children: &mut [TreeNode]) -> usize {
     if children.is_empty() {
         return 0;
     }
 
-    // Shuffle the children array to randomize selection when urgencies are equal
-    // This is important for exploration diversity, especially early in search
-    fastrand::shuffle(children);
+    // Optimization: Avoid shuffling the entire children array (which moves large structs).
+    // Instead, use reservoir sampling to pick randomly among best children.
 
-    // Find the child with maximum urgency
-    children
-        .iter()
-        .enumerate()
-        .max_by(|(_, a), (_, b)| {
-            rave_urgency(a)
-                .partial_cmp(&rave_urgency(b))
-                .unwrap_or(std::cmp::Ordering::Equal)
-        })
-        .map(|(i, _)| i)
-        .unwrap_or(0)
+    let mut best_idx = 0;
+    let mut best_urgency = -f64::INFINITY;
+    let mut count = 0;
+
+    for (i, child) in children.iter().enumerate() {
+        let urgency = rave_urgency(child);
+
+        if urgency > best_urgency {
+            best_urgency = urgency;
+            best_idx = i;
+            count = 1;
+        } else if (urgency - best_urgency).abs() < 1e-9 {
+            // Equal urgency (within epsilon)
+            count += 1;
+            // Reservoir sampling: replace with probability 1/count
+            if fastrand::usize(0..count) == 0 {
+                best_idx = i;
+            }
+        }
+    }
+
+    best_idx
 }
 
 /// Descend through the tree to a leaf node, recording the path taken.
