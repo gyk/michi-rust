@@ -1,0 +1,3 @@
+[submodule "michi-c"]
+	path = michi-c
+	url = git@github.com:db3108/michi-c.git
