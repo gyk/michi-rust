@@ -71,6 +71,9 @@ pub const RAVE_EQUIV: usize = 3500;
 /// Minimum visits before expanding a node.
 pub const EXPAND_VISITS: u32 = 8;
 
+/// Progress report period (number of simulations between reports).
+pub const REPORT_PERIOD: usize = 200;
+
 /// Winrate threshold below which the engine resigns.
 pub const RESIGN_THRES: f64 = 0.2;
 

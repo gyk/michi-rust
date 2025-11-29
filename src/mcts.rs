@@ -395,13 +395,18 @@ fn get_leaf_position(tree: &TreeNode, path: &[usize]) -> Position {
 ///
 /// Performs the specified number of simulations and returns the best move found.
 /// The best move is the most-visited child of the root.
+///
+/// Includes early stopping: if the best move has a very high winrate early
+/// in the search, we stop early to save time.
 pub fn tree_search(root: &mut TreeNode, sims: usize) -> usize {
+    use crate::constants::{FASTPLAY5_THRES, FASTPLAY20_THRES};
+
     // Initialize root if necessary
     if root.children.is_empty() {
         expand(root);
     }
 
-    for _ in 0..sims {
+    for i in 0..sims {
         let mut amaf_map = vec![0i8; BOARDSIZE];
 
         // Descend to a leaf
@@ -413,6 +418,21 @@ pub fn tree_search(root: &mut TreeNode, sims: usize) -> usize {
 
         // Update tree with the result
         tree_update(root, &path, &amaf_map, score);
+
+        // Early stop test (same as michi-c)
+        // If best move has very high winrate, stop early
+        let best_wr = root
+            .children
+            .iter()
+            .filter(|c| c.v > 0)
+            .map(|c| c.winrate())
+            .fold(0.0_f64, f64::max);
+
+        if (i > sims / 20 && best_wr > FASTPLAY5_THRES)
+            || (i > sims / 5 && best_wr > FASTPLAY20_THRES)
+        {
+            break;
+        }
     }
 
     // Return the best move (most visited child)
