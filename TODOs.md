@@ -16,10 +16,12 @@
 
 ## Go Heuristics
 
-- [ ] **`fix_atari` and ladder reading** - Complex capture/escape analysis:
+- [x] **`fix_atari` and ladder reading** - Complex capture/escape analysis:
   - `fix_atari()` - Analyze if a group is in atari and find escape/capture moves
   - `read_ladder_attack()` - Check if a group can be captured in a ladder
-  - `make_list_neighbor_blocks_in_atari()` - Find opponent blocks in atari
+  - `line_height()` - Check distance from board edge for ladder optimization
+  - `fix_atari_ext()` - Extended version with `twolib_test` and `twolib_edgeonly` options
+  - `make_list_neighbor_blocks_in_atari()` - Find opponent blocks in atari (as `find_neighbor_blocks_in_atari`)
 
 - [ ] **`compute_cfg_distances`** - Common fate graph distances for locality priors. Used to give higher priority to moves near the last move.
 
@@ -102,9 +104,9 @@ moves are played.
 
 ---
 
-### 2. Missing ladder attack detection (`position.rs`)
+### 2. Missing ladder attack detection (`position.rs`) ✅ FIXED
 
-**Location:** `src/position.rs` - `fix_atari()` function
+**Location:** `src/position.rs` - `fix_atari()` and `fix_atari_ext()` functions
 
 **C version has `read_ladder_attack()`:**
 ```c
@@ -126,23 +128,14 @@ Point read_ladder_attack(Position *pos, Point pt, Slist libs)
 }
 ```
 
-**Rust version:**
+**Rust version now has:**
 ```rust
-pub fn fix_atari(pos: &Position, pt: Point, singlept_ok: bool) -> Vec<Point> {
-    // ...
-    // If 2 or more liberties, not in atari
-    if libs.len() >= 2 {
-        return moves;  // Just returns! No ladder check!
-    }
-    // ...
-}
+pub fn read_ladder_attack(pos: &Position, pt: Point, libs: &[Point]) -> Point
+pub fn fix_atari_ext(pos, pt, singlept_ok, twolib_test, twolib_edgeonly) -> Vec<Point>
+pub fn line_height(pt: Point) -> i32  // For edge optimization
 ```
 
-**Impact:** Cannot detect when groups with 2 liberties are actually capturable via a working
-ladder sequence. This is a fundamental tactical weakness.
-
-**Missing features:**
-- `read_ladder_attack()` function
+**Status:** Implemented with full ladder detection, including:
 - `twolib_test` parameter for 2-liberty group testing
 - `twolib_edgeonly` parameter for edge-only ladder optimization
 - Verification that escape moves don't lead into ladders
@@ -265,7 +258,7 @@ pub fn fix_atari(pos: &Position, pt: Point, singlept_ok: bool) -> Vec<Point>
 
 ---
 
-### 7. Escape move doesn't verify ladder safety (`position.rs`)
+### 7. Escape move doesn't verify ladder safety (`position.rs`) ✅ FIXED
 
 **C version checks ladder after escape:**
 ```c
@@ -277,15 +270,20 @@ if (slist_size(libs) >= 2) {
 }
 ```
 
-**Rust version accepts any escape:**
+**Rust version now checks ladder:**
 ```rust
 if new_libs.len() >= 2 {
-    // Good, we escape - no ladder check!
-    moves.push(lib);
+    // Good, we escape - but check we're not walking into a ladder
+    if !moves.is_empty()
+        || new_libs.len() >= 3
+        || read_ladder_attack(&test_pos, lib, &new_libs) == 0
+    {
+        // Accept escape move
+    }
 }
 ```
 
-**Impact:** May suggest escape moves that lead directly into a working ladder.
+**Status:** Fixed - escape moves are now verified to not lead into working ladders.
 
 ---
 
@@ -294,12 +292,12 @@ if new_libs.len() >= 2 {
 | Issue | Severity | Location | Status |
 |-------|----------|----------|--------|
 | AMAF not updated in playout | 🔴 Critical | `playout.rs` | ✅ Fixed |
-| Missing ladder attack detection | 🔴 Critical | `position.rs` | TODO |
+| Missing ladder attack detection | 🔴 Critical | `position.rs` | ✅ Fixed |
 | Wrong PROB_RSAREJECT usage | 🔴 Critical | `playout.rs` | ✅ Fixed |
 | Missing sqrt() in pattern prior | 🔴 Critical | `mcts.rs` | ✅ Fixed |
 | Missing shuffle in most_urgent() | 🟡 Medium | `mcts.rs` | ✅ Fixed |
 | Missing group size tracking | 🟡 Medium | `position.rs` | TODO |
-| No ladder check on escape | 🟡 Medium | `position.rs` | TODO |
+| No ladder check on escape | 🟡 Medium | `position.rs` | ✅ Fixed |
 
 ---
 
@@ -309,4 +307,4 @@ if new_libs.len() >= 2 {
 2. ~~**Use PROB_RSAREJECT for random moves** - Quick fix, good impact~~ ✅
 3. ~~**Add sqrt() to pattern prior** - One-line fix~~ ✅
 4. ~~**Add shuffle in most_urgent()** - Simple fix~~ ✅
-5. **Implement ladder reading** - Complex but important for tactical strength
+5. ~~**Implement ladder reading** - Complex but important for tactical strength~~ ✅

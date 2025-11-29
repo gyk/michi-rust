@@ -6,7 +6,8 @@
 //! - large_pat.tst tests require large pattern matching
 
 use michi_rust::position::{
-    Position, empty_position, is_eye, is_eyeish, parse_coord, pass_move, play_move, str_coord,
+    Position, empty_position, fix_atari, fix_atari_ext, is_eye, is_eyeish, parse_coord, pass_move,
+    play_move, str_coord,
 };
 
 // =============================================================================
@@ -28,9 +29,23 @@ fn setup_position(moves: &[&str]) -> Position {
 
 /// Set up stones on the board by placing them directly.
 /// This simulates the C code's "debug setpos" command.
-/// The moves list alternates: first black stones, then white stones.
-/// Example: setpos(&["C8", "C9", "E9"], &["B8", "F9", "D8"]) places
-/// black at C8, C9, E9 and white at B8, F9, D8.
+/// Moves are played alternately: Black, White, Black, White, ...
+/// Use "pass" to skip a turn.
+///
+/// Example: setpos_alt(&["C8", "C9", "E9", "B8", "F9", "D8"]) plays:
+///   C8 (Black), C9 (White), E9 (Black), B8 (White), F9 (Black), D8 (White)
+#[allow(dead_code)]
+fn setpos_alt(moves: &[&str]) -> Position {
+    setup_position(moves)
+}
+
+/// Set up stones on the board by specifying Black and White moves separately.
+/// This is more intuitive for tests where you want to place specific patterns.
+/// The moves are interleaved: Black[0], White[0], Black[1], White[1], ...
+///
+/// Example: setpos(&["C8", "E9", "F9"], &["C9", "B8", "D8"]) places:
+/// - Black at C8, E9, F9
+/// - White at C9, B8, D8
 #[allow(dead_code)]
 fn setpos(black_moves: &[&str], white_moves: &[&str]) -> Position {
     let mut moves = Vec::new();
@@ -589,32 +604,186 @@ fn test_mcplayout_fills_board() {
 // Tests inspired by michi-c test suite (requiring not-yet-implemented features)
 // =============================================================================
 
-// The following tests are placeholders for when fix_atari is implemented
-// Based on michi-c/tests/fix_atari.tst
+// The following tests are based on michi-c/tests/fix_atari.tst
 
 #[test]
-#[ignore = "Requires fix_atari implementation - see TODOs.md"]
 fn test_fix_atari_escape() {
     // From fix_atari.tst test 10:
     // debug setpos C8 C9 E9 B8 F9 D8
     // debug fix_atari C8
     // Expected: [1 C7] (escape by extending to C7)
+
+    // Play moves: C8(B), C9(W), E9(B), B8(W), F9(B), D8(W)
+    // After this: Black at C8, E9, F9; White at C9, B8, D8
+    // It's Black's turn (move 6 is done)
+    let pos = setpos_alt(&["C8", "C9", "E9", "B8", "F9", "D8"]);
+
+    // C8 stone should be in atari - find escape moves
+    let c8 = parse_coord("C8");
+    let moves = fix_atari(&pos, c8, false);
+
+    // Should suggest C7 as escape
+    let c7 = parse_coord("C7");
+    assert!(
+        moves.contains(&c7),
+        "fix_atari should suggest C7 as escape, got: {:?}",
+        moves.iter().map(|&m| str_coord(m)).collect::<Vec<_>>()
+    );
 }
 
 #[test]
-#[ignore = "Requires fix_atari implementation - see TODOs.md"]
 fn test_fix_atari_counter_capture() {
     // From fix_atari.tst test 110:
     // debug setpos A1 E5 B2 A2
     // debug fix_atari A1
     // Expected: [1 A3 B1] (counter-capture options)
+
+    // Play moves: A1(B), E5(W), B2(B), A2(W)
+    // After this: Black at A1, B2; White at E5, A2
+    // A1 is in atari (surrounded by A2 and the edge)
+    let pos = setpos_alt(&["A1", "E5", "B2", "A2"]);
+
+    let a1 = parse_coord("A1");
+    let moves = fix_atari(&pos, a1, false);
+
+    // Should suggest counter-capture moves: A3 or B1
+    let a3 = parse_coord("A3");
+    let b1 = parse_coord("B1");
+
+    // At least one counter-capture should be suggested
+    let has_counter = moves.contains(&a3) || moves.contains(&b1);
+    assert!(
+        has_counter,
+        "fix_atari should suggest A3 or B1 as counter-capture, got: {:?}",
+        moves.iter().map(|&m| str_coord(m)).collect::<Vec<_>>()
+    );
 }
 
 #[test]
-#[ignore = "Requires fix_atari and ladder reading - see TODOs.md"]
-fn test_ladder_capture() {
-    // From fix_atari.tst test 210-260:
-    // Various ladder reading tests
+fn test_ladder_simple() {
+    // From fix_atari.tst test 210:
+    // debug setpos A1 A2
+    // debug fix_atari A1
+    // Expected: [1] (in atari, but ladder works so no escapes)
+
+    // Play moves: A1(B), A2(W)
+    // Black at A1, White at A2, A1 is in corner in atari
+    let pos = setpos_alt(&["A1", "A2"]);
+
+    let a1 = parse_coord("A1");
+    let moves = fix_atari(&pos, a1, false);
+
+    // A1 is in atari and caught in a ladder (corner) - B1 would be captured
+    // So no good escape move should be suggested
+    assert!(
+        moves.is_empty(),
+        "Ladder should work, no escape moves expected, got: {:?}",
+        moves.iter().map(|&m| str_coord(m)).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn test_ladder_broken() {
+    // From fix_atari.tst test 220:
+    // After setpos A1 A2, add G1 (ladder breaker)
+    // debug fix_atari A1
+    // Expected: [1 B1] (ladder is broken by G1, so B1 is a valid escape)
+
+    // Play moves: A1(B), A2(W), G1(B)
+    // G1 is a ladder breaker - if A1 tries to escape via B1, C1, etc.
+    // it will eventually connect with G1
+    let pos = setpos_alt(&["A1", "A2", "G1"]);
+
+    let a1 = parse_coord("A1");
+    let moves = fix_atari(&pos, a1, false);
+
+    // With ladder breaker, B1 should be a valid escape
+    let b1 = parse_coord("B1");
+    assert!(
+        moves.contains(&b1),
+        "Ladder should be broken by G1, B1 should be valid escape, got: {:?}",
+        moves.iter().map(|&m| str_coord(m)).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn test_ladder_no_breaker_too_close() {
+    // From fix_atari.tst test 230:
+    // This builds on test 220 (A1, A2, G1) and adds D2
+    // State after test 220: Black at A1, G1; White at A2
+    // Test 230: debug setpos D2 (played as White's move!)
+    // Final state: Black at A1, G1; White at A2, D2
+    // debug fix_atari A1
+    // Expected: [1] (ladder still works, D2 as White stone doesn't help Black)
+
+    // Play moves: A1(B), A2(W), G1(B), D2(W)
+    // D2 is White's stone, so it doesn't break the ladder for Black
+    let pos = setpos_alt(&["A1", "A2", "G1", "D2"]);
+
+    let a1 = parse_coord("A1");
+    let moves = fix_atari(&pos, a1, false);
+
+    // The ladder is still broken by G1, so B1 should still be valid!
+    // Wait - G1 is a ladder breaker. Let me re-read the tests...
+    // Actually test 230 adds D2 which makes the ladder work again (D2 blocks the escape path)
+
+    // Hmm, actually let me think about this more carefully:
+    // After A1(B), A2(W), G1(B), D2(W):
+    // - Black has A1 and G1
+    // - White has A2 and D2
+    // If Black plays B1 to escape, White plays B2
+    // If Black plays C1, White plays C2
+    // If Black plays D1... White already has D2!
+    // So the ladder works because D2 (White) blocks the escape path
+
+    // But wait - with G1 on the board, let's trace:
+    // A1 escapes to B1 (now A1-B1 group with 2 libs: C1, B2)
+    // W plays B2, B can escape to C1 (now A1-B1-C1 with 2 libs: D1, C2)
+    // W plays C2, B can escape to D1 (now A1-B1-C1-D1 with 2 libs: E1, D2)
+    // But D2 is occupied by White! So D1 only has lib E1 after W plays there
+    // Actually no... if B plays D1, the group has libs at E1 (and D2 is blocked)
+    // So after B D1: A1-B1-C1-D1 group with 1 lib at E1. W captures with E1.
+    // So ladder works!
+
+    // But G1 is there... The key is whether the ladder extends far enough
+    // to connect with G1 before running out of space.
+    // A1-B1-C1-D1-E1-F1-G1 would connect, but the ladder terminates at D1
+    // because D2 blocks.
+
+    // OK so the expected result is indeed that the ladder works (no escapes)
+    let b1 = parse_coord("B1");
+    assert!(
+        !moves.contains(&b1),
+        "Ladder should work because D2 (White) blocks the escape path, got: {:?}",
+        moves.iter().map(|&m| str_coord(m)).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn test_ladder_twolib_attack() {
+    // From fix_atari.tst tests 240-260:
+    // Test ladder detection on groups with 2 liberties
+
+    // debug setpos G5 F5 A1 G4 A2 H4 A3 G6 H5
+    // Play: G5(B), F5(W), A1(B), G4(W), A2(B), H4(W), A3(B), G6(W), H5(B)
+    // Black: G5, A1, A2, A3, H5  White: F5, G4, H4, G6
+    // This creates a position where G5 has 2 liberties but is caught in ladder
+    let pos = setpos_alt(&["G5", "F5", "A1", "G4", "A2", "H4", "A3", "G6", "H5"]);
+
+    // G5 has 2 liberties (H6 and J5) but should be capturable via ladder
+    let g5 = parse_coord("G5");
+
+    // Use fix_atari_ext with twolib_test=true, twolib_edgeonly=false
+    // to check for ladder attacks on 2-liberty groups
+    let moves = fix_atari_ext(&pos, g5, false, true, false);
+
+    // Should find a ladder attack move (H6 or J5)
+    // The exact move depends on the implementation, but there should be one
+    assert!(
+        !moves.is_empty(),
+        "Should detect ladder attack on G5 with 2 liberties, got: {:?}",
+        moves.iter().map(|&m| str_coord(m)).collect::<Vec<_>>()
+    );
 }
 
 // The following tests are placeholders for when large patterns are implemented

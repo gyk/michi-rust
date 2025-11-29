@@ -713,6 +713,53 @@ pub fn find_neighbor_blocks_in_atari(pos: &Position, stones: &[Point]) -> Vec<(P
     result
 }
 
+/// Get the distance from the board edge (0 = on edge, 1 = one away, etc.)
+///
+/// Returns 0 for the first line, 1 for the second line, etc.
+/// Used to skip expensive ladder checks for groups with liberties away from edges.
+#[inline]
+pub fn line_height(pt: Point) -> i32 {
+    let row = pt / W;
+    let col = pt % W;
+
+    // Calculate distance from each edge
+    let from_left = col as i32 - 1; // -1 because column 0 is padding
+    let from_right = N as i32 - col as i32;
+    let from_top = row as i32 - 1; // -1 because row 0 is padding
+    let from_bottom = N as i32 - row as i32;
+
+    // Return the minimum distance to any edge (0-indexed, so 0 = first line)
+    from_left.min(from_right).min(from_top).min(from_bottom)
+}
+
+/// Check if a group with 2 liberties can be captured in a working ladder.
+///
+/// This is a general 2-lib capture exhaustive solver. For each liberty of the group,
+/// it tries playing there as an attack move, then recursively calls `fix_atari_ext` to
+/// see if the group can escape. If no escape is possible, the ladder works.
+///
+/// Returns the attacking move if the ladder succeeds, or 0 if not.
+pub fn read_ladder_attack(pos: &Position, pt: Point, libs: &[Point]) -> Point {
+    for &lib in libs {
+        let mut test_pos = pos.clone();
+        // Try playing at this liberty to continue the ladder attack
+        if !play_move(&mut test_pos, lib).is_empty() {
+            continue; // Move not legal
+        }
+
+        // Check if the group can escape. Use twolib_test=false to avoid infinite recursion
+        let escape_moves = fix_atari_ext(&test_pos, pt, false, false, false);
+
+        // If in atari and no escape moves, the ladder works
+        let (_, new_libs) = compute_block(&test_pos, pt, 2);
+        if new_libs.len() <= 1 && escape_moves.is_empty() {
+            return lib; // Ladder attack successful!
+        }
+    }
+
+    0 // Ladder attack not successful
+}
+
 /// Check if a group is in atari and find moves that can save it or capture neighbors.
 ///
 /// Returns a list of suggested moves. This is a simplified version of the C `fix_atari`.
@@ -727,6 +774,33 @@ pub fn find_neighbor_blocks_in_atari(pos: &Position, stones: &[Point]) -> Vec<(P
 /// - Escape by playing on the last liberty
 /// - Counter-capture adjacent opponent groups in atari
 pub fn fix_atari(pos: &Position, pt: Point, singlept_ok: bool) -> Vec<Point> {
+    // Default: test 2-lib groups for ladders, edge only optimization on
+    fix_atari_ext(pos, pt, singlept_ok, true, true)
+}
+
+/// Extended version of fix_atari with ladder detection options.
+///
+/// Parameters:
+/// - `pos`: Current position
+/// - `pt`: A point in the group to check
+/// - `singlept_ok`: If true, don't try to save single-stone groups
+/// - `twolib_test`: If true, also check groups with 2 liberties for ladder captures
+/// - `twolib_edgeonly`: If true and twolib_test is true, only check ladders when
+///                      both liberties are on the edge (line 0). This optimization
+///                      skips expensive ladder calculations for interior groups.
+///
+/// Returns moves that can:
+/// - Capture opponent stones (if the group belongs to opponent)
+/// - Continue a ladder attack on opponent with 2 liberties (if twolib_test)
+/// - Escape by playing on the last liberty
+/// - Counter-capture adjacent opponent groups in atari
+pub fn fix_atari_ext(
+    pos: &Position,
+    pt: Point,
+    singlept_ok: bool,
+    twolib_test: bool,
+    twolib_edgeonly: bool,
+) -> Vec<Point> {
     let mut moves = Vec::new();
 
     // Compute the block
@@ -737,8 +811,21 @@ pub fn fix_atari(pos: &Position, pt: Point, singlept_ok: bool) -> Vec<Point> {
         return moves;
     }
 
-    // If 2 or more liberties, not in atari
+    // If 2 or more liberties, check for ladder captures (if enabled)
     if libs.len() >= 2 {
+        // Test groups with exactly 2 liberties for ladder captures
+        if twolib_test && libs.len() == 2 && stones.len() > 1 {
+            // twolib_edgeonly: skip expensive ladder check unless both libs are on edge
+            if twolib_edgeonly && (line_height(libs[0]) > 0 || line_height(libs[1]) > 0) {
+                return moves; // Not on edge, skip ladder check
+            }
+
+            // Check if this group can be captured via ladder
+            let ladder_move = read_ladder_attack(pos, pt, &libs);
+            if ladder_move != 0 {
+                moves.push(ladder_move);
+            }
+        }
         return moves;
     }
 
@@ -766,9 +853,18 @@ pub fn fix_atari(pos: &Position, pt: Point, singlept_ok: bool) -> Vec<Point> {
     if play_move(&mut test_pos, lib).is_empty() {
         let (_, new_libs) = compute_block(&test_pos, lib, 3);
         if new_libs.len() >= 2 {
-            // Good, we escape
-            if !moves.contains(&lib) {
-                moves.push(lib);
+            // Good, we escape - but check we're not walking into a ladder
+            // Accept escape if:
+            // - We already have alternative moves (counter-captures)
+            // - We get 3+ liberties (definitely safe)
+            // - We get exactly 2 liberties but ladder check fails
+            if !moves.is_empty()
+                || new_libs.len() >= 3
+                || read_ladder_attack(&test_pos, lib, &new_libs) == 0
+            {
+                if !moves.contains(&lib) {
+                    moves.push(lib);
+                }
             }
         }
     }
