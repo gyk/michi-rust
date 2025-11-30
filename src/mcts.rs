@@ -92,6 +92,11 @@ pub fn expand(node: &mut TreeNode) {
         None
     };
 
+    // Precompute capture moves for priors
+    // Use gen_capture_moves_all to scan ALL groups on the board (not just neighbors)
+    // with twolib_edgeonly=false for full ladder analysis (expensive but accurate for priors)
+    let capture_moves = gen_capture_moves_all(&node.pos, false);
+
     // Generate all legal moves
     for pt in BOARD_IMIN..BOARD_IMAX {
         if node.pos.color[pt] != b'.' {
@@ -107,7 +112,7 @@ pub fn expand(node: &mut TreeNode) {
             let mut child = TreeNode::new(&child_pos);
 
             // Apply priors
-            apply_priors(&mut child, &node.pos, pt, &cfg_map);
+            apply_priors(&mut child, &node.pos, pt, &cfg_map, &capture_moves);
 
             node.children.push(child);
         }
@@ -127,6 +132,7 @@ fn apply_priors(
     parent_pos: &Position,
     pt: Point,
     cfg_map: &Option<[i8; BOARDSIZE]>,
+    capture_moves: &[(Point, usize)],
 ) {
     // 1. CFG distance prior - moves near the last move get a bonus
     if let Some(cfg) = cfg_map {
@@ -154,10 +160,8 @@ fn apply_priors(
     }
 
     // 4. Capture prior - check if this move captures or saves stones
-    // Use gen_capture_moves_all to scan ALL groups on the board (not just neighbors)
-    // with twolib_edgeonly=false for full ladder analysis (expensive but accurate for priors)
-    let capture_moves = gen_capture_moves_all(parent_pos, false);
-    for (mv, size) in capture_moves {
+    // capture_moves is precomputed in expand()
+    for &(mv, size) in capture_moves {
         if mv == pt {
             if size == 1 {
                 child.pv += PRIOR_CAPTURE_ONE;
@@ -286,7 +290,7 @@ fn rave_urgency(node: &TreeNode) -> f64 {
 ///
 /// When multiple children have equal urgency (common early in search),
 /// picks one randomly using reservoir sampling to avoid shuffling the array.
-fn most_urgent(children: &mut [TreeNode]) -> usize {
+fn most_urgent(children: &[TreeNode]) -> usize {
     if children.is_empty() {
         return 0;
     }
@@ -332,7 +336,7 @@ fn tree_descend(tree: &mut TreeNode, amaf_map: &mut [i8]) -> Vec<usize> {
             break;
         }
 
-        let child_idx = most_urgent(&mut node.children);
+        let child_idx = most_urgent(&node.children);
         path.push(child_idx);
 
         let child = &node.children[child_idx];
