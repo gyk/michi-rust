@@ -108,7 +108,7 @@ pub fn expand(node: &mut TreeNode) {
         }
 
         let mut child_pos = node.pos.clone();
-        if play_move(&mut child_pos, pt).is_empty() {
+        if play_move(&mut child_pos, pt).is_ok() {
             let mut child = TreeNode::new(&child_pos);
 
             // Apply priors

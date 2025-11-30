@@ -827,9 +827,9 @@ mod tests {
 
         // Play moves to create the pattern around D5
         // Black at C5, E5; White at D6
-        play_move(&mut pos, parse_coord("C5")); // Black
-        play_move(&mut pos, parse_coord("D6")); // White
-        play_move(&mut pos, parse_coord("E5")); // Black
+        play_move(&mut pos, parse_coord("C5")).unwrap(); // Black
+        play_move(&mut pos, parse_coord("D6")).unwrap(); // White
+        play_move(&mut pos, parse_coord("E5")).unwrap(); // Black
 
         // Now at D5, we should have:
         // North: White (D6)

@@ -31,8 +31,7 @@ use std::io::{self, BufRead, Write};
 use crate::constants::{BOARDSIZE, N, N_SIMS, PASS_MOVE, RESIGN_MOVE, RESIGN_THRES};
 use crate::mcts::{TreeNode, tree_search_with_display};
 use crate::position::{
-    Position, empty_position, format_position_with_owner, parse_coord, pass_move, play_move,
-    str_coord,
+    Position, format_position_with_owner, parse_coord, pass_move, play_move, str_coord,
 };
 
 /// The list of known GTP commands.
@@ -220,7 +219,7 @@ impl GtpEngine {
             }
 
             "clear_board" => {
-                empty_position(&mut self.pos);
+                self.pos.clear();
                 self.tree = Some(TreeNode::new(&self.pos));
                 self.owner_map.iter_mut().for_each(|x| *x = 0);
                 (true, String::new())
@@ -264,12 +263,12 @@ impl GtpEngine {
                 }
 
                 // Try to play the move
-                let result = play_move(&mut self.pos, pt);
-                if result.is_empty() {
-                    self.tree = None; // Invalidate tree
-                    (true, String::new())
-                } else {
-                    (false, result.to_string())
+                match play_move(&mut self.pos, pt) {
+                    Ok(()) => {
+                        self.tree = None; // Invalidate tree
+                        (true, String::new())
+                    }
+                    Err(e) => (false, e.to_string()),
                 }
             }
 
@@ -307,7 +306,7 @@ impl GtpEngine {
                     pass_move(&mut self.pos);
                     (true, "pass".to_string())
                 } else {
-                    play_move(&mut self.pos, pt);
+                    play_move(&mut self.pos, pt).unwrap();
                     (true, str_coord(pt))
                 }
             }

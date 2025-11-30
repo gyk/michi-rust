@@ -6,8 +6,8 @@
 //! - large_pat.tst tests require large pattern matching
 
 use michi_rust::position::{
-    Position, empty_position, fix_atari, fix_atari_ext, is_eye, is_eyeish, parse_coord, pass_move,
-    play_move, str_coord,
+    Position, fix_atari, fix_atari_ext, is_eye, is_eyeish, parse_coord, pass_move, play_move,
+    str_coord,
 };
 
 // =============================================================================
@@ -22,7 +22,7 @@ fn setup_position(moves: &[&str]) -> Position {
     let mut pos = Position::new();
     for mv in moves {
         let pt = parse_coord(mv);
-        play_move(&mut pos, pt);
+        play_move(&mut pos, pt).unwrap();
     }
     pos
 }
@@ -151,7 +151,7 @@ fn test_parse_pass() {
 #[test]
 fn test_empty_position() {
     let mut pos = Position::new();
-    empty_position(&mut pos);
+    pos.clear();
 
     assert_eq!(pos.n, 0, "Move count should be 0");
     assert_eq!(pos.ko, 0, "Ko should be cleared");
@@ -178,7 +178,7 @@ fn test_play_single_stone() {
     let pt = parse_coord("D4");
 
     let result = play_move(&mut pos, pt);
-    assert!(result.is_empty(), "Move should be legal");
+    assert!(result.is_ok(), "Move should be legal");
     assert_eq!(pos.n, 1, "Move count should be 1");
     assert_eq!(pos.last, pt, "Last move should be D4");
     // After Black plays, colors swap, so Black's stone is now 'x'
@@ -194,10 +194,10 @@ fn test_play_two_stones() {
     let b1 = parse_coord("D4");
     let w1 = parse_coord(elsewhere()); // Use board-size-appropriate coordinate
 
-    play_move(&mut pos, b1);
+    play_move(&mut pos, b1).unwrap();
     assert_eq!(pos.n, 1);
 
-    play_move(&mut pos, w1);
+    play_move(&mut pos, w1).unwrap();
     assert_eq!(pos.n, 2);
 
     // After two moves, stones swap back: original black is 'X' again
@@ -220,12 +220,12 @@ fn test_illegal_move_occupied() {
     let mut pos = Position::new();
     let pt = parse_coord("D4");
 
-    play_move(&mut pos, pt);
+    play_move(&mut pos, pt).unwrap();
 
     // Try to play on the same point
     let result = play_move(&mut pos, pt);
     assert!(
-        result.contains("Illegal") || result.contains("EMPTY"),
+        result.is_err(),
         "Playing on occupied point should be illegal"
     );
 }
@@ -241,21 +241,21 @@ fn test_capture_single_stone() {
     let mut pos = Position::new();
 
     // Black plays C4
-    play_move(&mut pos, parse_coord("C4"));
+    play_move(&mut pos, parse_coord("C4")).unwrap();
     // White plays D4
-    play_move(&mut pos, parse_coord("D4"));
+    play_move(&mut pos, parse_coord("D4")).unwrap();
     // Black plays E4
-    play_move(&mut pos, parse_coord("E4"));
+    play_move(&mut pos, parse_coord("E4")).unwrap();
     // White plays elsewhere
-    play_move(&mut pos, parse_coord(elsewhere()));
+    play_move(&mut pos, parse_coord(elsewhere())).unwrap();
     // Black plays D3
-    play_move(&mut pos, parse_coord("D3"));
+    play_move(&mut pos, parse_coord("D3")).unwrap();
     // White plays elsewhere
-    play_move(&mut pos, parse_coord(elsewhere2()));
+    play_move(&mut pos, parse_coord(elsewhere2())).unwrap();
     // Black plays D5 - captures!
     let result = play_move(&mut pos, parse_coord("D5"));
 
-    assert!(result.is_empty(), "Capture move should be legal");
+    assert!(result.is_ok(), "Capture move should be legal");
 
     // The white stone at D4 should be removed
     let d4 = parse_coord("D4");
@@ -268,15 +268,15 @@ fn test_capture_corner() {
     let mut pos = Position::new();
 
     // White plays A1
-    play_move(&mut pos, parse_coord("B2")); // Black elsewhere
-    play_move(&mut pos, parse_coord("A1")); // White A1
+    play_move(&mut pos, parse_coord("B2")).unwrap(); // Black elsewhere
+    play_move(&mut pos, parse_coord("A1")).unwrap(); // White A1
 
     // Black surrounds
-    play_move(&mut pos, parse_coord("A2"));
-    play_move(&mut pos, parse_coord(elsewhere())); // White elsewhere
+    play_move(&mut pos, parse_coord("A2")).unwrap();
+    play_move(&mut pos, parse_coord(elsewhere())).unwrap(); // White elsewhere
     let result = play_move(&mut pos, parse_coord("B1")); // Black captures
 
-    assert!(result.is_empty(), "Capture move should be legal");
+    assert!(result.is_ok(), "Capture move should be legal");
     assert_eq!(
         pos.color[parse_coord("A1")],
         b'.',
@@ -290,20 +290,20 @@ fn test_capture_group() {
     let mut pos = Position::new();
 
     // Setup: White stones at D4, D5, surrounded by Black
-    play_move(&mut pos, parse_coord("C4")); // B
-    play_move(&mut pos, parse_coord("D4")); // W
-    play_move(&mut pos, parse_coord("C5")); // B
-    play_move(&mut pos, parse_coord("D5")); // W
-    play_move(&mut pos, parse_coord("E4")); // B
-    play_move(&mut pos, parse_coord(elsewhere())); // W elsewhere
-    play_move(&mut pos, parse_coord("E5")); // B
-    play_move(&mut pos, parse_coord(elsewhere2())); // W elsewhere
-    play_move(&mut pos, parse_coord("D3")); // B
-    play_move(&mut pos, parse_coord(elsewhere3())); // W elsewhere
+    play_move(&mut pos, parse_coord("C4")).unwrap(); // B
+    play_move(&mut pos, parse_coord("D4")).unwrap(); // W
+    play_move(&mut pos, parse_coord("C5")).unwrap(); // B
+    play_move(&mut pos, parse_coord("D5")).unwrap(); // W
+    play_move(&mut pos, parse_coord("E4")).unwrap(); // B
+    play_move(&mut pos, parse_coord(elsewhere())).unwrap(); // W elsewhere
+    play_move(&mut pos, parse_coord("E5")).unwrap(); // B
+    play_move(&mut pos, parse_coord(elsewhere2())).unwrap(); // W elsewhere
+    play_move(&mut pos, parse_coord("D3")).unwrap(); // B
+    play_move(&mut pos, parse_coord(elsewhere3())).unwrap(); // W elsewhere
     // Final capture move
     let result = play_move(&mut pos, parse_coord("D6"));
 
-    assert!(result.is_empty(), "Capture move should be legal");
+    assert!(result.is_ok(), "Capture move should be legal");
     assert_eq!(
         pos.color[parse_coord("D4")],
         b'.',
@@ -326,17 +326,13 @@ fn test_suicide_single_stone() {
     let mut pos = Position::new();
 
     // Setup: Black stones at A2, B1, try White at A1
-    play_move(&mut pos, parse_coord("A2")); // B
-    play_move(&mut pos, parse_coord(elsewhere())); // W elsewhere
-    play_move(&mut pos, parse_coord("B1")); // B
+    play_move(&mut pos, parse_coord("A2")).unwrap(); // B
+    play_move(&mut pos, parse_coord(elsewhere())).unwrap(); // W elsewhere
+    play_move(&mut pos, parse_coord("B1")).unwrap(); // B
 
     // Now it's White's turn, A1 would be suicide
     let result = play_move(&mut pos, parse_coord("A1"));
-    assert!(
-        result.contains("suicide"),
-        "A1 should be suicide: {}",
-        result
-    );
+    assert!(result.is_err(), "A1 should be suicide: {:?}", result);
 }
 
 #[test]
@@ -346,10 +342,10 @@ fn test_non_suicide_capture() {
 
     // Setup: Black stone at B1, White stones at A2 and B2
     // Playing Black at A1 captures a stone, so it's not suicide
-    play_move(&mut pos, parse_coord("B1")); // B
-    play_move(&mut pos, parse_coord("A2")); // W
-    play_move(&mut pos, parse_coord(elsewhere())); // B elsewhere
-    play_move(&mut pos, parse_coord("B2")); // W
+    play_move(&mut pos, parse_coord("B1")).unwrap(); // B
+    play_move(&mut pos, parse_coord("A2")).unwrap(); // W
+    play_move(&mut pos, parse_coord(elsewhere())).unwrap(); // B elsewhere
+    play_move(&mut pos, parse_coord("B2")).unwrap(); // W
 
     // Black plays A1 - looks like suicide but captures White at A2
     // Wait, need to surround A2 first...
@@ -381,17 +377,17 @@ fn test_simple_ko() {
     // Black plays at C2 to capture O at B2, creating ko
 
     // Setup the pattern
-    play_move(&mut pos, parse_coord("A2")); // B
-    play_move(&mut pos, parse_coord("B2")); // W
-    play_move(&mut pos, parse_coord("B1")); // B
-    play_move(&mut pos, parse_coord("C2")); // W - somewhere to pass turn
-    play_move(&mut pos, parse_coord("B3")); // B
-    play_move(&mut pos, parse_coord(elsewhere())); // W - elsewhere
-    play_move(&mut pos, parse_coord("C1")); // B
-    play_move(&mut pos, parse_coord(elsewhere2())); // W - elsewhere
-    play_move(&mut pos, parse_coord("C3")); // B
-    play_move(&mut pos, parse_coord(elsewhere3())); // W - elsewhere
-    play_move(&mut pos, parse_coord("D2")); // B
+    play_move(&mut pos, parse_coord("A2")).unwrap(); // B
+    play_move(&mut pos, parse_coord("B2")).unwrap(); // W
+    play_move(&mut pos, parse_coord("B1")).unwrap(); // B
+    play_move(&mut pos, parse_coord("C2")).unwrap(); // W - somewhere to pass turn
+    play_move(&mut pos, parse_coord("B3")).unwrap(); // B
+    play_move(&mut pos, parse_coord(elsewhere())).unwrap(); // W - elsewhere
+    play_move(&mut pos, parse_coord("C1")).unwrap(); // B
+    play_move(&mut pos, parse_coord(elsewhere2())).unwrap(); // W - elsewhere
+    play_move(&mut pos, parse_coord("C3")).unwrap(); // B
+    play_move(&mut pos, parse_coord(elsewhere3())).unwrap(); // W - elsewhere
+    play_move(&mut pos, parse_coord("D2")).unwrap(); // B
 
     // Now the pattern is set up, W at B2 and C2, B surrounds
     // Let's verify ko detection with a simpler approach:
@@ -428,9 +424,9 @@ fn test_is_eyeish_corner() {
     let mut pos = Position::new();
 
     // Black stones at A2 and B1
-    play_move(&mut pos, parse_coord("A2")); // B
-    play_move(&mut pos, parse_coord(elsewhere())); // W
-    play_move(&mut pos, parse_coord("B1")); // B
+    play_move(&mut pos, parse_coord("A2")).unwrap(); // B
+    play_move(&mut pos, parse_coord(elsewhere())).unwrap(); // W
+    play_move(&mut pos, parse_coord("B1")).unwrap(); // B
 
     // A1 should be eyeish for Black (but colors are swapped now)
     let a1 = parse_coord("A1");
@@ -464,11 +460,11 @@ fn test_is_eye_true_eye() {
     let mut pos = Position::new();
 
     // Black stones at A2, B2, B1 - A1 is a true eye
-    play_move(&mut pos, parse_coord("A2")); // B
-    play_move(&mut pos, parse_coord(elsewhere())); // W
-    play_move(&mut pos, parse_coord("B1")); // B
-    play_move(&mut pos, parse_coord(elsewhere2())); // W
-    play_move(&mut pos, parse_coord("B2")); // B
+    play_move(&mut pos, parse_coord("A2")).unwrap(); // B
+    play_move(&mut pos, parse_coord(elsewhere())).unwrap(); // W
+    play_move(&mut pos, parse_coord("B1")).unwrap(); // B
+    play_move(&mut pos, parse_coord(elsewhere2())).unwrap(); // W
+    play_move(&mut pos, parse_coord("B2")).unwrap(); // B
 
     // Now A1 should be a true eye for Black
     let a1 = parse_coord("A1");

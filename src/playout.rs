@@ -51,7 +51,7 @@ pub fn mcplayout(pos: &mut Position, mut amaf_map: Option<&mut [i8]>) -> f64 {
                     amaf[pt] = if pos.is_black_to_play() { 1 } else { -1 };
                 }
             }
-            play_move(pos, pt);
+            play_move(pos, pt).expect("Chosen move should be legal");
             passes = 0;
         } else {
             pass_move(pos);
@@ -186,7 +186,7 @@ fn try_pattern_moves(pos: &Position, neighbors: &[Point]) -> Option<Point> {
 ///              if false, uses higher rejection probability (PROB_SSAREJECT = 0.9)
 fn try_move_with_self_atari_check(pos: &Position, pt: Point, is_random: bool) -> bool {
     let mut test_pos = pos.clone();
-    if !play_move(&mut test_pos, pt).is_empty() {
+    if play_move(&mut test_pos, pt).is_err() {
         return false; // Illegal move
     }
 

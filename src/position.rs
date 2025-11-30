@@ -87,7 +87,7 @@ impl Position {
             cap_x: 0,
             komi: 7.5,
         };
-        empty_position(&mut p);
+        p.clear();
         p
     }
 
@@ -97,6 +97,52 @@ impl Position {
     #[inline]
     pub fn is_black_to_play(&self) -> bool {
         self.n % 2 == 0
+    }
+
+    /// Reset a position to the initial empty board state.
+    ///
+    /// The board is laid out as a 1D array with padding:
+    /// - Index 0 to N: top padding (out of bounds)
+    /// - Each row: left padding + N playable points
+    /// - Bottom padding
+    pub fn clear(&mut self) {
+        // Reset to initial position with C padding layout
+        let mut k = 0;
+        for _col in 0..=N {
+            self.color[k] = b' ';
+            k += 1;
+        }
+        for _row in 1..=N {
+            self.color[k] = b' ';
+            k += 1;
+            for _col in 1..=N {
+                self.color[k] = b'.';
+                k += 1;
+            }
+        }
+        for _col in 0..W {
+            self.color[k] = b' ';
+            k += 1;
+        }
+
+        // Initialize env4/env4d arrays
+        for pt in BOARD_IMIN..BOARD_IMAX {
+            if self.color[pt] == OUT {
+                continue;
+            }
+            self.env4[pt] = compute_env4(self, pt, 0);
+            self.env4d[pt] = compute_env4(self, pt, 4);
+        }
+
+        self.ko = 0;
+        self.last = 0;
+        self.last2 = 0;
+        self.last3 = 0;
+        self.cap = 0;
+        self.cap_x = 0;
+        self.n = 0;
+
+        debug_assert!(env4_ok(self), "env4/env4d initialization failed");
     }
 }
 
@@ -291,55 +337,6 @@ pub fn env4_ok(_pos: &Position) -> bool {
     true
 }
 
-/// Reset a position to the initial empty board state.
-///
-/// The board is laid out as a 1D array with padding:
-/// - Index 0 to N: top padding (out of bounds)
-/// - Each row: left padding + N playable points
-/// - Bottom padding
-///
-/// Returns an empty string for compatibility (can be used in a chain).
-pub fn empty_position(pos: &mut Position) -> &'static str {
-    // Reset to initial position with C padding layout
-    let mut k = 0;
-    for _col in 0..=N {
-        pos.color[k] = b' ';
-        k += 1;
-    }
-    for _row in 1..=N {
-        pos.color[k] = b' ';
-        k += 1;
-        for _col in 1..=N {
-            pos.color[k] = b'.';
-            k += 1;
-        }
-    }
-    for _col in 0..W {
-        pos.color[k] = b' ';
-        k += 1;
-    }
-
-    // Initialize env4/env4d arrays
-    for pt in BOARD_IMIN..BOARD_IMAX {
-        if pos.color[pt] == OUT {
-            continue;
-        }
-        pos.env4[pt] = compute_env4(pos, pt, 0);
-        pos.env4d[pt] = compute_env4(pos, pt, 4);
-    }
-
-    pos.ko = 0;
-    pos.last = 0;
-    pos.last2 = 0;
-    pos.last3 = 0;
-    pos.cap = 0;
-    pos.cap_x = 0;
-    pos.n = 0;
-
-    debug_assert!(env4_ok(pos), "env4/env4d initialization failed");
-    ""
-}
-
 /// Swap stone colors (X <-> x) to change the current player.
 ///
 /// This is called after each move so that the current player is always 'X'.
@@ -357,8 +354,7 @@ fn swap_color(pos: &mut Position) {
 /// Execute a pass move.
 ///
 /// This increments the move counter, swaps colors, and clears the ko.
-/// Returns an empty string for compatibility.
-pub fn pass_move(pos: &mut Position) -> &'static str {
+pub fn pass_move(pos: &mut Position) {
     swap_color(pos);
     pos.n += 1;
     pos.last3 = pos.last2;
@@ -366,7 +362,6 @@ pub fn pass_move(pos: &mut Position) -> &'static str {
     pos.last = PASS_MOVE;
     pos.ko = 0; // Ko is cleared on pass
     std::mem::swap(&mut pos.cap, &mut pos.cap_x);
-    ""
 }
 
 /// Check if a point is "eyeish" (surrounded by stones of one color).
@@ -442,24 +437,25 @@ pub fn is_eye(pos: &Position, pt: Point) -> u8 {
 /// Play a move at the given point.
 ///
 /// Handles pass moves, legality checking, captures, ko detection, and color swapping.
-/// Returns an empty string on success, or an error message on failure.
+/// Returns `Ok(())` on success, or `Err(MoveError)` on failure.
 ///
 /// # Errors
-/// - "Error Illegal move: point not EMPTY" - if the point is occupied
-/// - "Error Illegal move: retakes ko" - if the move violates the ko rule
-/// - "Error Illegal move: suicide" - if the move would have no liberties
-pub fn play_move(pos: &mut Position, pt: Point) -> &'static str {
+/// - `MoveError::Occupied` - if the point is occupied
+/// - `MoveError::Ko` - if the move violates the ko rule
+/// - `MoveError::Suicide` - if the move would have no liberties
+pub fn play_move(pos: &mut Position, pt: Point) -> Result<(), MoveError> {
     if pt == PASS_MOVE {
-        return pass_move(pos);
+        pass_move(pos);
+        return Ok(());
     }
     if pos.color[pt] != EMPTY {
-        return "Error Illegal move: point not EMPTY";
+        return Err(MoveError::Occupied);
     }
 
     // Check ko
     pos.ko_old = pos.ko;
     if pt == pos.ko {
-        return "Error Illegal move: retakes ko";
+        return Err(MoveError::Ko);
     }
 
     // Check if playing into enemy eye (for ko detection)
@@ -518,7 +514,7 @@ pub fn play_move(pos: &mut Position, pt: Point) -> &'static str {
                 }
             }
             pos.ko = pos.ko_old;
-            return "Error Illegal move: suicide";
+            return Err(MoveError::Suicide);
         }
     }
 
@@ -534,7 +530,7 @@ pub fn play_move(pos: &mut Position, pt: Point) -> &'static str {
     pos.last = pt;
 
     debug_assert!(env4_ok(pos), "env4/env4d inconsistent after play_move");
-    ""
+    Ok(())
 }
 
 /// Get the 4 orthogonal neighbors (N, E, S, W) of a point.
@@ -746,7 +742,7 @@ pub fn read_ladder_attack(pos: &Position, pt: Point, libs: &[Point]) -> Point {
     for &lib in libs {
         let mut test_pos = pos.clone();
         // Try playing at this liberty to continue the ladder attack
-        if !play_move(&mut test_pos, lib).is_empty() {
+        if play_move(&mut test_pos, lib).is_err() {
             continue; // Move not legal
         }
 
@@ -889,7 +885,7 @@ pub fn fix_atari_with_sizes(
     // Try escaping by playing on our liberty
     // First check if it would actually give us more liberties
     let mut test_pos = pos.clone();
-    if play_move(&mut test_pos, lib).is_empty() {
+    if play_move(&mut test_pos, lib).is_ok() {
         // After playing the escape move, re-compute the block to get new stones count
         let (new_stones, new_libs) = compute_block(&test_pos, lib, 3);
         if new_libs.len() >= 2 {
@@ -1357,7 +1353,7 @@ mod tests {
         let mut pos = Position::new();
         let pt = parse_coord("D4");
         let result = play_move(&mut pos, pt);
-        assert!(result.is_empty(), "Move should be legal");
+        assert!(result.is_ok(), "Move should be legal");
         assert_eq!(pos.n, 1);
         assert_eq!(pos.last, pt);
     }
@@ -1371,20 +1367,21 @@ mod tests {
 
         // But wait - after each move colors swap!
         // Move 1: Black plays A2 (becomes x after swap)
-        play_move(&mut pos, parse_coord("A2"));
+        play_move(&mut pos, parse_coord("A2")).unwrap();
         // Move 2: White plays somewhere (becomes x, Black's A2 becomes X)
-        play_move(&mut pos, parse_coord("E5")); // Valid on both 9x9 and 13x13
+        play_move(&mut pos, parse_coord("E5")).unwrap(); // Valid on both 9x9 and 13x13
         // Move 3: Black plays B1 (becomes x)
-        play_move(&mut pos, parse_coord("B1"));
+        play_move(&mut pos, parse_coord("B1")).unwrap();
 
         // Now it's White's turn. The corner A1 is surrounded by Black stones
         // (which are now 'x' since it's White's turn)
         // White playing A1 would be suicide
         let corner = parse_coord("A1");
         let result = play_move(&mut pos, corner);
-        assert!(
-            result.contains("suicide"),
-            "A1 should be suicide for White: got '{}'",
+        assert_eq!(
+            result,
+            Err(MoveError::Suicide),
+            "A1 should be suicide for White: got '{:?}'",
             result
         );
     }
@@ -1401,19 +1398,19 @@ mod tests {
         let b4 = parse_coord("C4"); // Now black can capture
         let _w4 = parse_coord("E4");
 
-        play_move(&mut pos, b1);
-        play_move(&mut pos, w1);
-        play_move(&mut pos, b2);
-        play_move(&mut pos, w2);
-        play_move(&mut pos, b3);
-        play_move(&mut pos, w3);
+        play_move(&mut pos, b1).unwrap();
+        play_move(&mut pos, w1).unwrap();
+        play_move(&mut pos, b2).unwrap();
+        play_move(&mut pos, w2).unwrap();
+        play_move(&mut pos, b3).unwrap();
+        play_move(&mut pos, w3).unwrap();
 
         // Before capture, D3 should have x (opponent stone)
         assert_eq!(pos.color[w1], b'x');
 
         // Play capturing move
         let result = play_move(&mut pos, b4);
-        assert!(result.is_empty(), "Capture move should be legal");
+        assert!(result.is_ok(), "Capture move should be legal");
     }
 
     #[test]
@@ -1430,7 +1427,7 @@ mod tests {
     fn test_group_liberties() {
         let mut pos = Position::new();
         let pt = parse_coord("D4");
-        play_move(&mut pos, pt);
+        play_move(&mut pos, pt).unwrap();
 
         // A single stone in the middle should have 4 liberties
         // After play_move, colors are swapped, so the stone is 'x'
@@ -1459,7 +1456,7 @@ mod tests {
         for m in moves {
             let pt = parse_coord(m);
             let result = play_move(&mut pos, pt);
-            assert!(result.is_empty(), "Move {} should be legal: {}", m, result);
+            assert!(result.is_ok(), "Move {} should be legal: {:?}", m, result);
             assert!(env4_ok(&pos), "env4 inconsistent after move {}", m);
         }
     }
@@ -1469,11 +1466,11 @@ mod tests {
         let mut pos = Position::new();
 
         // Set up a capture scenario
-        play_move(&mut pos, parse_coord("B1")); // Black
+        play_move(&mut pos, parse_coord("B1")).unwrap(); // Black
         assert!(env4_ok(&pos), "env4 inconsistent after B1");
-        play_move(&mut pos, parse_coord("A1")); // White in corner
+        play_move(&mut pos, parse_coord("A1")).unwrap(); // White in corner
         assert!(env4_ok(&pos), "env4 inconsistent after A1");
-        play_move(&mut pos, parse_coord("A2")); // Black captures
+        play_move(&mut pos, parse_coord("A2")).unwrap(); // Black captures
 
         // After capture, env4 should still be consistent
         assert!(env4_ok(&pos), "env4 inconsistent after capture");
@@ -1493,8 +1490,8 @@ mod tests {
         for (i, m) in moves.iter().enumerate() {
             let result = play_move(&mut pos, parse_coord(m));
             assert!(
-                result.is_empty() || result.contains("suicide"),
-                "Move {} ({}) failed: {}",
+                result.is_ok() || result == Err(MoveError::Suicide),
+                "Move {} ({}) failed: {:?}",
                 i,
                 m,
                 result
@@ -1506,16 +1503,16 @@ mod tests {
     #[test]
     fn test_env4_clone() {
         let mut pos = Position::new();
-        play_move(&mut pos, parse_coord("D4"));
-        play_move(&mut pos, parse_coord("E4"));
-        play_move(&mut pos, parse_coord("D5"));
+        play_move(&mut pos, parse_coord("D4")).unwrap();
+        play_move(&mut pos, parse_coord("E4")).unwrap();
+        play_move(&mut pos, parse_coord("D5")).unwrap();
 
         // Clone the position
         let mut cloned = pos.clone();
         assert!(env4_ok(&cloned), "cloned env4 inconsistent");
 
         // Play more moves on the clone
-        play_move(&mut cloned, parse_coord("E5"));
+        play_move(&mut cloned, parse_coord("E5")).unwrap();
         assert!(
             env4_ok(&cloned),
             "cloned env4 inconsistent after more moves"
@@ -1542,7 +1539,7 @@ mod tests {
                 if is_eye(&pos, pt) == b'X' {
                     continue;
                 }
-                if play_move(&mut pos, pt).is_empty() {
+                if play_move(&mut pos, pt).is_ok() {
                     // Move succeeded
                     assert!(
                         env4_ok(&pos),
@@ -1602,7 +1599,7 @@ mod tests {
     #[test]
     fn test_display_with_stones() {
         let mut pos = Position::new();
-        play_move(&mut pos, parse_coord("D4"));
+        play_move(&mut pos, parse_coord("D4")).unwrap();
         let display = format_position(&pos);
 
         // After one move by Black

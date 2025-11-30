@@ -30,9 +30,8 @@ fn setpos(moves: &[&str]) -> Position {
             // PASS
             pass_move(&mut pos);
         } else {
-            let result = play_move(&mut pos, pt);
-            if !result.is_empty() {
-                panic!("Illegal move {} in setpos: {}", mv, result);
+            if let Err(e) = play_move(&mut pos, pt) {
+                panic!("Illegal move {} in setpos: {}", mv, e);
             }
         }
     }
@@ -106,7 +105,7 @@ fn test_fix_atari_30_escape_blocked() {
     // Expected: [1] - still in atari but test focuses on something else
 
     let mut pos = setpos(&["C1", "G7", "B2", "B1"]);
-    play_move(&mut pos, parse_coord("E5"));
+    play_move(&mut pos, parse_coord("E5")).unwrap();
 
     let b1 = parse_coord("B1");
     let moves = fix_atari(&pos, b1, false);

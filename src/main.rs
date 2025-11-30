@@ -160,9 +160,9 @@ fn run_demo() {
     println!("{pos}");
 
     // Play a few moves to show the board display
-    michi_rust::position::play_move(&mut pos, michi_rust::position::parse_coord("D4"));
-    michi_rust::position::play_move(&mut pos, michi_rust::position::parse_coord("F6"));
-    michi_rust::position::play_move(&mut pos, michi_rust::position::parse_coord("E5"));
+    michi_rust::position::play_move(&mut pos, michi_rust::position::parse_coord("D4")).unwrap();
+    michi_rust::position::play_move(&mut pos, michi_rust::position::parse_coord("F6")).unwrap();
+    michi_rust::position::play_move(&mut pos, michi_rust::position::parse_coord("E5")).unwrap();
     println!("After 3 moves:");
     println!("{pos}");
 
