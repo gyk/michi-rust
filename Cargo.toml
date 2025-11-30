@@ -9,5 +9,6 @@ board9x9 = []
 board13x13 = []
 
 [dependencies]
+anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 fastrand = "2"

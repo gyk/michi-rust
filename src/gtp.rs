@@ -28,6 +28,8 @@
 
 use std::io::{self, BufRead, Write};
 
+use anyhow::Result;
+
 use crate::constants::{BOARDSIZE, N, N_SIMS, PASS_MOVE, RESIGN_MOVE, RESIGN_THRES};
 use crate::mcts::{TreeNode, tree_search_with_display};
 use crate::position::{
@@ -102,16 +104,13 @@ impl GtpEngine {
     }
 
     /// Run the GTP command loop, reading from stdin and writing to stdout.
-    pub fn run(&mut self) {
+    pub fn run(&mut self) -> Result<()> {
         let stdin = io::stdin();
         let mut stdout = io::stdout();
         let mut stderr = io::stderr();
 
         for line in stdin.lock().lines() {
-            let line = match line {
-                Ok(l) => l,
-                Err(_) => break,
-            };
+            let line = line?;
 
             // Skip empty lines and comments
             let line = line.trim();
@@ -136,25 +135,27 @@ impl GtpEngine {
 
             // Print board after command execution (to stderr, like michi-c)
             self.print_board();
-            stderr.flush().unwrap();
+            stderr.flush()?;
 
             // Format and send response
             let (success, message) = response;
             let prefix = if success { '=' } else { '?' };
             let id_str = id.map(|i| i.to_string()).unwrap_or_default();
 
-            writeln!(stdout, "{prefix}{id_str} {message}\n").unwrap();
-            stdout.flush().unwrap();
+            writeln!(stdout, "{prefix}{id_str} {message}\n")?;
+            stdout.flush()?;
 
             // Print turn indicator prompt to stderr
-            write!(stderr, "{} michi-rust> ", self.get_turn_indicator()).unwrap();
-            stderr.flush().unwrap();
+            write!(stderr, "{} michi-rust> ", self.get_turn_indicator())?;
+            stderr.flush()?;
 
             // Quit if requested
             if command == "quit" {
                 break;
             }
         }
+
+        Ok(())
     }
 
     /// Parse an optional numeric command ID from the beginning of the line.

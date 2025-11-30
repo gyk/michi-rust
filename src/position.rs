@@ -37,6 +37,8 @@ impl std::fmt::Display for MoveError {
     }
 }
 
+impl std::error::Error for MoveError {}
+
 /// A Go position (board state).
 ///
 /// The board is represented as a 1D array with padding around the edges.

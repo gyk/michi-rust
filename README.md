@@ -8,9 +8,7 @@ A Rust <dfn title="100% vibe coded ">reimplementation</dfn> of [Michi](https://g
 
 This project is based on [Michi-c](https://github.com/db3108/michi-c), which itself is a C port of the original Python code by Petr Baudis.
 
-<div align="center">
-  <img src="./assets/vibe.svg" alt="100% vibe coded" style="width: 40%; max-width: 400px;"/>
-</div>
+<img src="./assets/vibe.svg" alt="100% vibe coded" style="width: 25%; max-width: 400px;"/>
 
 ## Features
 

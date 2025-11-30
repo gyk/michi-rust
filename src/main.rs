@@ -12,6 +12,7 @@
 
 use std::path::PathBuf;
 
+use anyhow::Result;
 use clap::{Parser, Subcommand, ValueEnum};
 
 use michi_rust::board::{Board, Color};
@@ -106,16 +107,22 @@ fn main() {
 
             // Run GTP server
             let mut engine = GtpEngine::with_simulations(n_sims);
-            engine.run();
+            if let Err(e) = engine.run() {
+                eprintln!("GTP error: {}", e);
+                std::process::exit(1);
+            }
         }
         Some(Commands::Demo { patterns }) => {
             load_patterns_from_arg(&patterns);
-            run_demo();
+            if let Err(e) = run_demo() {
+                eprintln!("Demo error: {}", e);
+                std::process::exit(1);
+            }
         }
         None => {
-            // Try to auto-load patterns from common locations
-            let _ = load_large_patterns();
-            run_demo();
+            // No subcommand provided, print help
+            use clap::CommandFactory;
+            let _ = Cli::command().print_help();
         }
     }
 }
@@ -141,7 +148,7 @@ fn load_patterns_from_arg(patterns: &Option<PathBuf>) {
     }
 }
 
-fn run_demo() {
+fn run_demo() -> Result<()> {
     println!("Michi-Rust: Minimalistic Go MCTS Engine\n");
 
     // Demo 1: Simple 2D board
@@ -160,9 +167,9 @@ fn run_demo() {
     println!("{pos}");
 
     // Play a few moves to show the board display
-    michi_rust::position::play_move(&mut pos, michi_rust::position::parse_coord("D4")).unwrap();
-    michi_rust::position::play_move(&mut pos, michi_rust::position::parse_coord("F6")).unwrap();
-    michi_rust::position::play_move(&mut pos, michi_rust::position::parse_coord("E5")).unwrap();
+    michi_rust::position::play_move(&mut pos, michi_rust::position::parse_coord("D4"))?;
+    michi_rust::position::play_move(&mut pos, michi_rust::position::parse_coord("F6"))?;
+    michi_rust::position::play_move(&mut pos, michi_rust::position::parse_coord("E5"))?;
     println!("After 3 moves:");
     println!("{pos}");
 
@@ -172,4 +179,6 @@ fn run_demo() {
     let best_move = michi_rust::mcts::tree_search(&mut root, 100);
     println!("Best move: {}", str_coord(best_move));
     println!("Root winrate: {:.1}%", root.winrate() * 100.0);
+
+    Ok(())
 }
