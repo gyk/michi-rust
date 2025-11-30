@@ -28,11 +28,12 @@ pub enum MoveError {
 
 impl std::fmt::Display for MoveError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            MoveError::Occupied => write!(f, "Error Illegal move: point not EMPTY"),
-            MoveError::Ko => write!(f, "Error Illegal move: retakes ko"),
-            MoveError::Suicide => write!(f, "Error Illegal move: suicide"),
-        }
+        let msg = match self {
+            MoveError::Occupied => "point not EMPTY",
+            MoveError::Ko => "retakes ko",
+            MoveError::Suicide => "suicide",
+        };
+        write!(f, "Error Illegal move: {}", msg)
     }
 }
 
@@ -1116,81 +1117,14 @@ fn display_color(c: u8, black_to_play: bool) -> char {
 ///     A B C D E F G H J
 /// ```
 pub fn format_position(pos: &Position) -> String {
-    use std::fmt::Write;
-
-    let mut output = String::with_capacity(512);
-    let black_to_play = pos.is_black_to_play();
-
-    // Compute captures for display (internal tracking swaps after each move)
-    let (cap_black, cap_white) = if black_to_play {
-        (pos.cap_x, pos.cap)
-    } else {
-        (pos.cap, pos.cap_x)
-    };
-
-    // Header line with move number, captures, and komi
-    write!(
-        output,
-        "Move: {:<3}   Black: {} caps   White: {} caps   Komi: {:.1}",
-        pos.n, cap_black, cap_white, pos.komi
-    )
-    .unwrap();
-
-    // Ko point (if any)
-    if pos.ko != 0 {
-        write!(output, "   ko: {}", str_coord(pos.ko)).unwrap();
-    }
-    output.push('\n');
-
-    // Board rows (from top to bottom: row N down to row 1)
-    for row in 1..=N {
-        let row_label = N - row + 1;
-        // Add row number with proper spacing
-        write!(output, " {:>2} ", row_label).unwrap();
-
-        for col in 1..=N {
-            let k = row * (N + 1) + col;
-            let c = display_color(pos.color[k], black_to_play);
-
-            // Check if this is the last move (mark with parentheses)
-            // Note: pos.last == 0 means pass or no move, so we check pos.last != 0
-            let prev = if col > 1 { row * (N + 1) + col - 1 } else { 0 };
-
-            // Opening paren before the stone
-            if pos.last != 0 && pos.last == k {
-                output.push('(');
-            } else if pos.last != 0 && pos.last == prev {
-                output.push(')');
-            } else {
-                output.push(' ');
-            }
-
-            output.push(c);
-        }
-
-        // Closing paren after last stone if it's at the end of the row
-        if pos.last != 0 && pos.last == row * (N + 1) + N {
-            output.push(')');
-        }
-        output.push('\n');
-    }
-
-    // Column labels
-    output.push_str("    ");
-    for col in 0..N {
-        output.push(' ');
-        output.push(COL_LABELS[col] as char);
-    }
-    output.push_str("\n\n");
-
-    output
+    pos.to_string()
 }
 
 /// Print the position to stderr (for debugging).
 ///
 /// This is useful for quick debugging during development or in GTP debug mode.
 pub fn print_pos(pos: &Position) {
-    eprint!("{}", format_position(pos));
+    eprint!("{}", pos);
 }
 
 /// Format position with owner map (territory estimation).
@@ -1305,7 +1239,68 @@ pub fn format_position_with_owner(
 
 impl std::fmt::Display for Position {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", format_position(self))
+        let black_to_play = self.is_black_to_play();
+
+        // Compute captures for display (internal tracking swaps after each move)
+        let (cap_black, cap_white) = if black_to_play {
+            (self.cap_x, self.cap)
+        } else {
+            (self.cap, self.cap_x)
+        };
+
+        // Header line with move number, captures, and komi
+        write!(
+            f,
+            "Move: {:<3}   Black: {} caps   White: {} caps   Komi: {:.1}",
+            self.n, cap_black, cap_white, self.komi
+        )?;
+
+        // Ko point (if any)
+        if self.ko != 0 {
+            write!(f, "   ko: {}", str_coord(self.ko))?;
+        }
+        writeln!(f)?;
+
+        // Board rows (from top to bottom: row N down to row 1)
+        for row in 1..=N {
+            let row_label = N - row + 1;
+            // Add row number with proper spacing
+            write!(f, " {:>2} ", row_label)?;
+
+            for col in 1..=N {
+                let k = row * (N + 1) + col;
+                let c = display_color(self.color[k], black_to_play);
+
+                // Check if this is the last move (mark with parentheses)
+                // Note: self.last == 0 means pass or no move, so we check self.last != 0
+                let prev = if col > 1 { row * (N + 1) + col - 1 } else { 0 };
+
+                // Opening paren before the stone
+                if self.last != 0 && self.last == k {
+                    write!(f, "(")?;
+                } else if self.last != 0 && self.last == prev {
+                    write!(f, ")")?;
+                } else {
+                    write!(f, " ")?;
+                }
+
+                write!(f, "{}", c)?;
+            }
+
+            // Closing paren after last stone if it's at the end of the row
+            if self.last != 0 && self.last == row * (N + 1) + N {
+                write!(f, ")")?;
+            }
+            writeln!(f)?;
+        }
+
+        // Column labels
+        write!(f, "    ")?;
+        for col in 0..N {
+            write!(f, " {}", COL_LABELS[col] as char)?;
+        }
+        writeln!(f)?;
+        writeln!(f)
     }
 }
 
@@ -1313,7 +1308,7 @@ impl std::fmt::Debug for Position {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "Position {{")?;
         writeln!(f, "  n: {}, ko: {}, last: {}", self.n, self.ko, self.last)?;
-        write!(f, "{}", format_position(self))?;
+        write!(f, "{}", self)?;
         write!(f, "}}")
     }
 }
