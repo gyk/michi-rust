@@ -3,11 +3,14 @@
 <div align="center">
   <img src="./assets/logo.svg" alt="michi-rust" />
 </div>
-<br/>
 
-A Rust reimplementation of [Michi](https://github.com/pasky/michi) — a Minimalistic Go MCTS Engine.
+A Rust <dfn title="100% vibe coded ">reimplementation</dfn> of [Michi](https://github.com/pasky/michi) — a Minimalistic Go MCTS Engine.
 
 This project is based on [Michi-c](https://github.com/db3108/michi-c), which itself is a C port of the original Python code by Petr Baudis.
+
+<div align="center">
+  <img src="./assets/vibe.svg" alt="100% vibe coded" style="width: 40%; max-width: 400px;"/>
+</div>
 
 ## Features
 
@@ -103,7 +106,7 @@ The board size is set at compile time using Cargo features:
 
 For stronger play, michi-rust can use large-scale pattern files:
 
-1. Download from: http://pachi.or.cz/michi-pat/
+1. Download from: https://pasky.or.cz/dev/pachi/michi-pat/
 2. Extract `patterns.prob` and `patterns.spat` to a folder
 3. Use `--patterns <folder>` when running
 
@@ -152,6 +155,8 @@ quit
 This project is distributed under the MIT License, following the original Michi project.
 
 ## Acknowledgments
+
+This project would not be possible without the contributions of the humans behind the original implementations:
 
 - [Petr Baudis](https://github.com/pasky) for the original [Michi](https://github.com/pasky/michi) in Python
 - [db3108](https://github.com/db3108) for the [Michi-c](https://github.com/db3108/michi-c) port

@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 350" width="400" height="350">
+  <!-- Outer circle badge -->
+  <circle cx="200" cy="175" r="140" fill="none" stroke="#000" stroke-width="8"/>
+
+  <!-- Inner circle (partial, top) -->
+  <path d="M 80 175 A 120 120 0 0 1 320 175" fill="none" stroke="#000" stroke-width="4"/>
+
+  <!-- Inner circle (partial, bottom) -->
+  <path d="M 80 175 A 120 120 0 0 0 320 175" fill="none" stroke="#000" stroke-width="4"/>
+
+  <!-- 100% text -->
+  <text x="200" y="125" font-family="Arial Black, Arial, sans-serif" font-size="50" font-weight="900" text-anchor="middle" fill="#000">100%</text>
+
+  <polygon points="
+  45,140
+  20,145
+  35,175
+  20,205
+  45,210
+  355,210
+  380,205
+  365,175
+  380,145
+  355,140
+" fill="#000"/>
+
+  <!-- AI MADE text on banner -->
+  <text x="200" y="192" font-family="Arial Black, Arial, sans-serif" font-size="42" font-weight="900" text-anchor="middle" fill="#fff">AI MADE</text>
+
+  <!-- NO HUMAN text (two lines) -->
+  <text x="200" y="240" font-family="Arial Black, Arial, sans-serif" font-size="30" font-weight="900" text-anchor="middle" fill="#000">NO </text>
+  <text x="200" y="270" font-family="Arial Black, Arial, sans-serif" font-size="30" font-weight="900" text-anchor="middle" fill="#000">HUMAN</text>
+</svg>
